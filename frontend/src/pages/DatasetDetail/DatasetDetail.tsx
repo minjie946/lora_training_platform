@@ -1,0 +1,494 @@
+import { useEffect, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import {
+  Tag, Upload, Wand2, Edit3, Eye, Trash2, X, Plus, Save, Pencil, HelpCircle,
+} from 'lucide-react'
+import { api, BaseModel, Dataset, ImageItem } from '../../api/client'
+import Select from '../../components/Select/Select'
+import './DatasetDetail.css'
+
+export default function DatasetDetail() {
+  const { id } = useParams()
+  const dsId = Number(id)
+  const [ds, setDs] = useState<Dataset | null>(null)
+  const [images, setImages] = useState<ImageItem[]>([])
+  const [baseModels, setBaseModels] = useState<BaseModel[]>([])
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [uploadPct, setUploadPct] = useState<number | null>(null)
+  const [captioning, setCaptioning] = useState(false)
+  const [editing, setEditing] = useState<ImageItem | null>(null)
+  const [preview, setPreview] = useState<ImageItem | null>(null)
+  const [capMethod, setCapMethod] = useState('wd14') // auto | wd14 | blip，默认 WD14（写实/动漫均可，带置信度）
+  const [threshold, setThreshold] = useState(0.35)
+  const [excludeBodyFace, setExcludeBodyFace] = useState(false)
+  const [excludeTags, setExcludeTags] = useState('')
+  const [editingBase, setEditingBase] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const load = () => {
+    api.getDataset(dsId).then(setDs).catch(() => { })
+    return api.listImages(dsId).then(setImages).catch(() => { })
+  }
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+  }
+
+  // 轮询后台打标状态，直到结束（done/failed/idle），期间保持“打标中”并刷新图片。
+  const startPolling = () => {
+    stopPolling()
+    pollRef.current = setInterval(async () => {
+      try {
+        const s = await api.captionStatus(dsId)
+        if (s.caption_status === 'running') {
+          setCaptioning(true)
+        } else {
+          setCaptioning(false)
+          stopPolling()
+          setMsg(s.detail || '')
+          load()
+        }
+      } catch { /* 网络抖动时下次轮询再试 */ }
+    }, 2000)
+  }
+
+  useEffect(() => {
+    load()
+    // 进入页面时读取后台打标状态：若仍在打标则恢复“打标中”并继续轮询。
+    api.captionStatus(dsId).then((s) => {
+      if (s.caption_status === 'running') {
+        setCaptioning(true)
+        startPolling()
+      } else if (s.detail) {
+        setMsg(s.detail)
+      }
+    }).catch(() => { })
+    return stopPolling
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dsId])
+  useEffect(() => { api.baseModels().then((r) => setBaseModels(r.models)).catch(() => { }) }, [])
+
+  const upload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setBusy(true); setMsg(''); setUploadPct(0)
+    try {
+      await api.uploadImages(dsId, files, (pct) => setUploadPct(pct))
+      setMsg(`上传了 ${files.length} 张图片`)
+      load()
+    } catch (e: any) { setMsg(e.message) } finally { setBusy(false); setUploadPct(null) }
+  }
+
+  const saveCaption = async (filename: string, caption: string) => {
+    await api.updateCaption(dsId, filename, caption)
+    setImages((prev) => prev.map((im) => (im.filename === filename ? { ...im, caption } : im)))
+    setEditing((p) => (p && p.filename === filename ? { ...p, caption } : p))
+  }
+
+  const autoCaption = async () => {
+    setCaptioning(true); setMsg('')
+    try {
+      // 后台异步打标：立即返回，随后轮询状态（刷新页面/退出重进都能恢复）。
+      await api.autoCaption(dsId, {
+        method: capMethod,
+        threshold,
+        exclude_body_face: excludeBodyFace,
+        exclude_tags: excludeTags.split(',').map((s) => s.trim()).filter(Boolean),
+      })
+      startPolling()
+    } catch (e: any) { setCaptioning(false); setMsg(e.message) }
+  }
+
+  const removeImage = async (filename: string) => {
+    if (!confirm('确认删除该图片？')) return
+    await api.deleteImage(dsId, filename)
+    load()
+  }
+
+  const saveBaseModel = async (filename: string) => {
+    setEditingBase(false)
+    if (!ds || filename === ds.base_model) return
+    setMsg('')
+    try {
+      const updated = await api.updateDataset(dsId, { base_model: filename })
+      setDs(updated)
+      setMsg('底模已更新')
+    } catch (e: any) { setMsg(e.message) }
+  }
+
+  if (!ds) return <p className="muted">加载中…</p>
+
+  const baseInfo = baseModels.find((b) => b.filename === ds.base_model)
+  const baseText = baseInfo
+    ? `${baseInfo.label}（${baseInfo.is_sdxl ? 'SDXL' : 'SD1.5'} · ${baseInfo.style === 'realistic' ? '写实' : '动漫'}）`
+    : (ds.base_model || '默认底模')
+  const isRealistic = baseInfo?.style === 'realistic'
+  const autoCaptioner = isRealistic ? 'BLIP（自然语言描述）' : 'WD14（booru 标签）'
+  const effectiveMethod =
+    capMethod === 'wd14' ? 'WD14（booru 标签）'
+      : capMethod === 'blip' ? 'BLIP（自然语言描述）'
+        : `自动（跟随底模：${autoCaptioner}）`
+  const showThreshold = capMethod === 'wd14' || (capMethod === 'auto' && !isRealistic)
+
+  return (
+    <div>
+      {/* 粘性头部：标题 + 元信息 + 操作 */}
+      <div className="detail-header">
+        <div className="detail-header-info">
+          <h1 className="detail-title">{ds.name}</h1>
+          <span className="detail-divider" />
+          <span className="muted detail-meta">
+            {ds.repeat}_{ds.concept} · 触发词 <span className="detail-strong">{ds.trigger_word || '未设置'}</span>
+            {' · 底模 '}
+            {editingBase ? (
+              <span className="base-edit-inline">
+                <Select
+                  value={ds.base_model}
+                  onChange={(v) => saveBaseModel(String(v))}
+                  placeholder="选择底模"
+                  options={baseModels.map((m) => ({
+                    value: m.filename,
+                    label: `${m.label}（${m.is_sdxl ? 'SDXL' : 'SD1.5'} · ${m.style === 'realistic' ? '写实' : '动漫'}）`,
+                  }))}
+                />
+                <button className="base-edit-cancel" onClick={() => setEditingBase(false)}>取消</button>
+              </span>
+            ) : (
+              <>
+                <span className="detail-strong">{baseText}</span>
+                <button className="base-edit-btn" title="修改底模" onClick={() => setEditingBase(true)}>
+                  <Pencil size={13} />
+                </button>
+              </>
+            )}
+          </span>
+        </div>
+        <div className="detail-header-actions">
+          <Link className="btn ghost sm" to="/datasets">返回</Link>
+          <Link className="btn sm" to={`/jobs/new?dataset=${ds.id}`}>用此数据集训练</Link>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="toolbar">
+          <button className="btn ghost" disabled={busy || captioning} onClick={() => fileRef.current?.click()}>
+            <Upload size={16} />
+            {uploadPct !== null ? `上传中… ${uploadPct}%` : '上传图片'}
+          </button>
+          <button className="btn ghost" disabled={busy || captioning || images.length === 0} onClick={autoCaption}>
+            {captioning ? (<><span className="spinner" />打标中…</>) : (<><Wand2 size={16} className="icon-accent" />自动打标 / 注入触发词</>)}
+          </button>
+          <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple hidden
+            onChange={(e) => upload(e.target.files)} />
+          <span className="spacer" />
+          {msg && <span className="muted">{msg}</span>}
+        </div>
+
+        {uploadPct !== null && (
+          <div className="progress" style={{ marginTop: 10 }}>
+            <div className="bar" style={{ width: `${uploadPct}%` }} />
+          </div>
+        )}
+
+        {/* 打标参数：内嵌子面板 */}
+        <div className="cap-controls">
+          <div className="cap-field" style={{ minWidth: 220 }}>
+            <label className="cap-label">打标模型</label>
+            <Select
+              value={capMethod}
+              onChange={(v) => setCapMethod(String(v))}
+              options={[
+                { value: 'auto', label: `自动（跟随底模：${autoCaptioner}）` },
+                { value: 'wd14', label: 'WD14 标签（写实/动漫均可，适合标身材等属性）' },
+                { value: 'blip', label: 'BLIP 自然语言描述' },
+              ]}
+            />
+          </div>
+          {showThreshold && (
+            <div className="cap-field" style={{ width: 220 }}>
+              <div className="cap-label-row">
+                <label className="cap-label">
+                  WD14 阈值
+                  <span className="cap-help tip" tabIndex={0}
+                    data-tip={'置信度阈值：模型给每个标签打 0~1 的分，只有 ≥ 阈值的标签才会被写入。\n\n· 调低（如 0.2）→ 保留更多标签，能标出身材、姿势等细粒度属性，但噪声/错标增多\n· 调高（如 0.5）→ 只留高置信标签，更干净但可能漏标\n· 0.35 为通用默认；标不出想要的属性就往下调，杂标太多就往上调'}>
+                    <HelpCircle size={13} />
+                  </span>
+                </label>
+                <span className="cap-value">{threshold.toFixed(2)}</span>
+              </div>
+              <input
+                type="range" min={0.1} max={0.7} step={0.05} value={threshold}
+                onChange={(e) => setThreshold(Number(e.target.value))}
+                style={{ width: '100%' }}
+              />
+            </div>
+          )}
+          {showThreshold && (
+            <label className="cap-check">
+              <input type="checkbox" checked={excludeBodyFace}
+                onChange={(e) => setExcludeBodyFace(e.target.checked)} />
+              固化人物特征 <span className="muted" style={{ fontSize: 12 }}>(去掉身材/脸型标签)</span>
+            </label>
+          )}
+          {showThreshold && (
+            <div className="cap-field" style={{ minWidth: 240, flex: 1 }}>
+              <label className="cap-label">额外排除标签 <span className="muted">(逗号分隔, 可选)</span></label>
+              <input className="input" value={excludeTags}
+                placeholder="如: tattoo, glasses"
+                onChange={(e) => setExcludeTags(e.target.value)} />
+            </div>
+          )}
+        </div>
+
+        <p className="muted" style={{ marginTop: 12, lineHeight: 1.6 }}>
+          建议 15–40 张，多角度多表情多服装；核心外观特征不写入标签，触发词会被放到标签首位。
+          本次将使用 <strong>{effectiveMethod}</strong>。
+          {showThreshold && '　阈值越低标签越多（含身材等细粒度属性），但噪声也越多；标不出想要的属性可调低到 0.2 左右。'}
+          {showThreshold && excludeBodyFace && '　已勾选“固化人物特征”：身材/脸型标签会被从标注中移除，从而烘焙进触发词，让出图时该人物的身材脸型稳定还原（推荐用于人物 LoRA）。'}
+          {captioning && <span style={{ color: 'var(--accent-2)' }}>　首次运行需下载打标模型，请耐心等待…</span>}
+        </p>
+      </div>
+
+      {images.length === 0 ? (
+        <div className="card"><div className="empty">还没有图片，点击上方上传。</div></div>
+      ) : (
+        <div className="img-grid-wrap">
+          {captioning && (
+            <div className="grid-overlay">
+              <span className="spinner lg" />
+              <span>正在打标…</span>
+            </div>
+          )}
+          <div className="img-grid">
+            {images.map((im) => {
+              const tagCount = im.caption.split(',').map((t) => t.trim()).filter(Boolean).length
+              const conf = imageConfidenceLevel(im)
+              return (
+                <div className="img-cell" key={im.filename} data-confidence={conf ?? undefined}>
+                  <div className="img-media">
+                    <img src={im.thumbnail_url} alt={im.filename} className="img-thumb"
+                      onClick={() => setEditing(im)} />
+                    {/* hover 浮出操作层 */}
+                    <div className="img-overlay">
+                      <button className="round-btn primary" title="编辑标签" onClick={() => setEditing(im)}>
+                        <Edit3 size={18} />
+                      </button>
+                      <button className="round-btn" title="预览原图" onClick={() => setPreview(im)}>
+                        <Eye size={18} />
+                      </button>
+                      <button className="round-btn danger" title="删除图片" onClick={() => removeImage(im.filename)}>
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                    {conf && (
+                      <span className={`conf-badge conf-${conf}`}
+                        title={conf === 'low' ? '存在低置信度标签，建议核对'
+                          : conf === 'mid' ? '含中等置信度标签，可留意' : '标签置信度较高'}>
+                        {conf === 'low' ? '需核对' : conf === 'mid' ? '留意' : '可信'}
+                      </span>
+                    )}
+                    <span className="tag-badge" title="标签数量">
+                      <Tag size={12} />
+                      {tagCount}
+                    </span>
+                  </div>
+                  <div className="cap">
+                    <div className="cap-name" title={im.filename}>{im.filename}</div>
+                    <div className="cap-tags" title="点击编辑标签" onClick={() => setEditing(im)}>
+                      {im.caption || <span className="muted">未打标</span>}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <TagEditor
+          key={editing.filename}
+          item={editing}
+          onClose={() => setEditing(null)}
+          onSave={(caption) => saveCaption(editing.filename, caption)}
+        />
+      )}
+
+      {preview && (
+        <div className="modal-backdrop" onClick={() => setPreview(null)}>
+          <div className="preview-lightbox" onClick={(e) => e.stopPropagation()}>
+            <button className="round-btn preview-close" title="关闭" onClick={() => setPreview(null)}>
+              <X size={18} />
+            </button>
+            <img src={preview.image_url} alt={preview.filename} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function confidenceColor(c: number): string {
+  if (c >= 0.75) return '#a3e635' // 高置信度：可信
+  if (c >= 0.45) return '#eab308' // 中：留意
+  return '#f97316'                // 低：重点核对
+}
+
+// 卡片按 WD14 最低置信度分级：low(<45%) 需重点核对，mid(45~75%) 留意，
+// high(>=75%) 可信；无分数（BLIP/手动）返回 null，不着色。
+function imageConfidenceLevel(im: ImageItem): 'high' | 'mid' | 'low' | null {
+  const scores = (im.tag_scores || []).map((s) => s.confidence)
+  if (scores.length === 0) return null
+  const min = Math.min(...scores)
+  if (min >= 0.75) return 'high'
+  if (min >= 0.45) return 'mid'
+  return 'low'
+}
+
+// 全屏侧滑标签编辑：左大图 + 右侧标签胶囊 / 快速添加 / 批量文本。
+// 融合 WD14 置信度：胶囊按分数着色边框，触发词（首位）高亮。
+function TagEditor({
+  item,
+  onClose,
+  onSave,
+}: {
+  item: ImageItem
+  onClose: () => void
+  onSave: (caption: string) => Promise<void>
+}) {
+  const initial = item.caption.split(',').map((t) => t.trim()).filter(Boolean)
+  const [tags, setTags] = useState<string[]>(initial)
+  const [newTag, setNewTag] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const scoreMap = new Map((item.tag_scores || []).map((s) => [s.tag.trim().toLowerCase(), s.confidence]))
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const removeTag = (t: string) => setTags(tags.filter((x) => x !== t))
+  const addTag = (e: React.FormEvent) => {
+    e.preventDefault()
+    const v = newTag.trim()
+    if (v && !tags.includes(v)) { setTags([...tags, v]); setNewTag('') }
+  }
+  const save = async () => {
+    setSaving(true)
+    try { await onSave(tags.join(', ')); onClose() } finally { setSaving(false) }
+  }
+
+  const lowCount = tags.filter((t) => {
+    const c = scoreMap.get(t.toLowerCase())
+    return c != null && c < 0.45
+  }).length
+  // 是否有可展示的置信度分数（仅 WD14 打标会写入 .wdtags.json）。
+  const hasScores = scoreMap.size > 0
+
+  return (
+    <div className="tag-editor">
+      {/* 左：大图 */}
+      <div className="tag-editor-view">
+        <div className="tag-editor-topbar">
+          <button className="round-btn" title="关闭" onClick={onClose}><X size={18} /></button>
+          <span className="tag-editor-filename">{item.filename}</span>
+        </div>
+        <div className="tag-editor-img">
+          <img src={item.image_url} alt={item.filename} />
+        </div>
+      </div>
+
+      {/* 右：标签编辑 */}
+      <div className="tag-editor-side">
+        <div className="tag-editor-head">
+          <h2 className="tag-editor-h">
+            <Tag size={18} className="icon-accent" />
+            标签编辑
+            <span className="tag-count">{tags.length}</span>
+          </h2>
+          <button className="btn sm" disabled={saving} onClick={save}>
+            {saving ? (<><span className="spinner" />保存中…</>) : (<><Save size={15} />保存</>)}
+          </button>
+        </div>
+
+        <div className="tag-editor-body">
+          {/* 快速添加 */}
+          <div className="tag-section">
+            <label className="tag-section-label">添加标签</label>
+            <form onSubmit={addTag} className="tag-add-form">
+              <input
+                className="input"
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                placeholder="输入标签名并回车…"
+              />
+              <button type="submit" className="tag-add-btn" disabled={!newTag.trim()} title="添加">
+                <Plus size={18} />
+              </button>
+            </form>
+          </div>
+
+          {/* 当前标签胶囊 */}
+          <div className="tag-section">
+            <div className="tag-section-head">
+              <label className="tag-section-label">当前标签</label>
+              <button className="tag-clear" onClick={() => setTags([])}>清空全部</button>
+            </div>
+            {lowCount > 0 && (
+              <p className="tag-low-hint">{lowCount} 个低置信度标签，建议核对</p>
+            )}
+            <div className="tag-chips">
+              {tags.map((tag, idx) => {
+                const c = scoreMap.get(tag.toLowerCase())
+                const isTrigger = idx === 0
+                const border = c != null ? confidenceColor(c) : undefined
+                return (
+                  <div
+                    key={`${tag}-${idx}`}
+                    className={`tag-chip ${isTrigger ? 'trigger' : ''}`}
+                    style={border && !isTrigger ? { borderColor: border, color: border } : undefined}
+                    title={c != null ? `WD14 置信度 ${(c * 100).toFixed(0)}%` : (isTrigger ? '触发词（置于首位）' : '手动添加，无打标分数')}
+                  >
+                    <span>{tag}</span>
+                    {c != null && !isTrigger && <b className="tag-chip-score">{(c * 100).toFixed(0)}%</b>}
+                    <button className="tag-chip-x" onClick={() => removeTag(tag)}><X size={13} /></button>
+                  </div>
+                )
+              })}
+              {tags.length === 0 && <span className="muted" style={{ fontSize: 13 }}>暂无标签</span>}
+            </div>
+          </div>
+
+          {/* 批量文本编辑 */}
+          <div className="tag-section tag-section-bulk">
+            <label className="tag-section-label tag-bulk-label">
+              <span>批量文本编辑</span>
+              <span className="muted" style={{ fontSize: 11 }}>逗号分隔</span>
+            </label>
+            <textarea
+              className="tag-bulk-text"
+              value={tags.join(', ')}
+              onChange={(e) => setTags(e.target.value.split(',').map((t) => t.trim()).filter(Boolean))}
+            />
+          </div>
+
+          {hasScores ? (
+            <p className="muted" style={{ fontSize: 11, lineHeight: 1.6 }}>
+              置信度颜色：<span style={{ color: '#a3e635' }}>绿≥75%</span>、
+              <span style={{ color: '#eab308' }}>黄45–75%</span>、
+              <span style={{ color: '#f97316' }}>橙&lt;45%</span>。首位为触发词（高亮）。
+            </p>
+          ) : (
+            <p className="muted" style={{ fontSize: 11, lineHeight: 1.6 }}>
+              该图暂无 WD14 置信度分数：当前标注来自 BLIP 自然语言描述或手动编辑，
+              仅 <strong>WD14</strong> 打标会记录逐标签置信度。改用「WD14」重新打标即可看到分数着色。首位为触发词（高亮）。
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

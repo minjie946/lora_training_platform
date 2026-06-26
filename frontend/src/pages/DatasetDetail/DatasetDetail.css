@@ -1,0 +1,698 @@
+/* 数据集详情页专属：粘性头部、打标控制区、图片网格 hover 层、
+   预览灯箱、全屏侧滑标签编辑器。 */
+
+/* ---- 粘性头部 ---- */
+.detail-header {
+  position: sticky;
+  top: -32px;
+  z-index: 10;
+  margin: -32px -32px 20px;
+  padding: 0 32px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(24, 24, 27, .8);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.detail-header-info {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  min-width: 0;
+}
+
+.detail-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.detail-divider {
+  width: 1px;
+  height: 16px;
+  background: #52525b;
+  align-self: center;
+  flex: none;
+}
+
+.detail-meta {
+  font-size: 13px;
+  min-width: 0;
+}
+
+.detail-strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* 底模内联编辑 */
+.base-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin-left: 6px;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color .15s, background .15s;
+}
+
+.base-edit-btn:hover {
+  color: var(--accent-2);
+  background: var(--accent-soft);
+}
+
+.base-edit-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 320px;
+  vertical-align: middle;
+}
+
+.base-edit-inline .select {
+  min-width: 260px;
+}
+
+.base-edit-cancel {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.base-edit-cancel:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+/* ---- 打标控制区：内嵌子面板 ---- */
+.cap-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 32px;
+  margin-top: 14px;
+  padding: 16px;
+  background: rgba(9, 9, 11, .3);
+  border: 1px solid rgba(39, 39, 42, .5);
+  border-radius: 10px;
+}
+
+.cap-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cap-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+/* 阈值旁的问号提示图标 */
+.cap-help {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  color: #71717a;
+  cursor: help;
+  vertical-align: middle;
+  transition: color .15s;
+}
+
+.cap-help:hover,
+.cap-help:focus-visible {
+  color: var(--accent-2);
+  outline: none;
+}
+
+.cap-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cap-value {
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  color: var(--text);
+  background: var(--panel-2);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.cap-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  height: 42px;
+  cursor: pointer;
+}
+
+/* ---- 图片网格 ---- */
+.img-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.img-cell {
+  background: rgba(24, 24, 27, .4);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color .2s, box-shadow .2s, background .2s;
+}
+
+.img-cell:hover {
+  border-color: rgba(99, 102, 241, .5);
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .3);
+}
+
+/* 按 WD14 最低置信度着色卡片边框，一眼分辨哪些需要核对 */
+.img-cell[data-confidence="high"] {
+  border-color: rgba(163, 230, 53, .45);
+}
+
+.img-cell[data-confidence="mid"] {
+  border-color: rgba(234, 179, 8, .55);
+}
+
+.img-cell[data-confidence="low"] {
+  border-color: rgba(249, 115, 22, .7);
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, .35);
+}
+
+.img-cell[data-confidence="high"]:hover {
+  border-color: rgba(163, 230, 53, .75);
+}
+
+.img-cell[data-confidence="mid"]:hover {
+  border-color: rgba(234, 179, 8, .85);
+}
+
+.img-cell[data-confidence="low"]:hover {
+  border-color: #f97316;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .3), 0 0 0 1px rgba(249, 115, 22, .5);
+}
+
+/* 左上角置信度角标 */
+.conf-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+  border: 1px solid transparent;
+}
+
+.conf-badge.conf-high {
+  color: #a3e635;
+  background: rgba(163, 230, 53, .12);
+  border-color: rgba(163, 230, 53, .35);
+}
+
+.conf-badge.conf-mid {
+  color: #eab308;
+  background: rgba(234, 179, 8, .12);
+  border-color: rgba(234, 179, 8, .4);
+}
+
+.conf-badge.conf-low {
+  color: #fdba74;
+  background: rgba(249, 115, 22, .15);
+  border-color: rgba(249, 115, 22, .5);
+}
+
+.img-media {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.img-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  cursor: pointer;
+  transition: transform .5s;
+}
+
+.img-cell:hover img {
+  transform: scale(1.05);
+}
+
+/* hover 浮出操作层 */
+.img-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(9, 9, 11, .6);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity .2s;
+}
+
+.img-cell:hover .img-overlay {
+  opacity: 1;
+}
+
+/* 圆形操作按钮 */
+.round-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  background: var(--panel-2);
+  color: #d4d4d8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .4);
+  transition: transform .15s, background .15s, color .15s;
+}
+
+.round-btn:hover {
+  transform: scale(1.1);
+  background: #3f3f46;
+  color: #fff;
+}
+
+.round-btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.round-btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+.round-btn.danger {
+  background: rgba(127, 29, 29, .8);
+  color: #fca5a5;
+}
+
+.round-btn.danger:hover {
+  background: var(--err);
+  color: #fff;
+}
+
+/* 右上角标签数角标 */
+.tag-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(9, 9, 11, .8);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(82, 82, 91, .5);
+  color: #d4d4d8;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.tag-badge svg {
+  color: var(--accent-2);
+}
+
+.img-cell .cap {
+  padding: 12px;
+  border-top: 1px solid rgba(39, 39, 42, .5);
+}
+
+.cap-name {
+  font-size: 13px;
+  font-family: ui-monospace, monospace;
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+
+.cap-tags {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  cursor: pointer;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: color .15s;
+}
+
+.cap-tags:hover {
+  color: var(--text);
+}
+
+/* 打标进行中的遮罩 */
+.img-grid-wrap {
+  position: relative;
+}
+
+.grid-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(15, 17, 21, .7);
+  backdrop-filter: blur(2px);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+/* ---- 预览灯箱（仅看大图）---- */
+.preview-lightbox {
+  position: relative;
+  max-width: 90vw;
+  max-height: 88vh;
+  display: flex;
+}
+
+.preview-lightbox img {
+  max-width: 100%;
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.preview-close {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+}
+
+/* ---- 全屏侧滑标签编辑器 ---- */
+.tag-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  background: rgba(9, 9, 11, .95);
+  backdrop-filter: blur(16px);
+  animation: fade-in .2s ease;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.tag-editor-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+}
+
+.tag-editor-topbar {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.tag-editor-filename {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  color: #d4d4d8;
+  background: rgba(24, 24, 27, .8);
+  border: 1px solid rgba(82, 82, 91, .5);
+  backdrop-filter: blur(8px);
+  padding: 8px 16px;
+  border-radius: 999px;
+}
+
+.tag-editor-img {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  min-height: 0;
+}
+
+.tag-editor-img img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
+  border: 1px solid var(--border);
+}
+
+.tag-editor-side {
+  width: 420px;
+  flex: none;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 32px rgba(0, 0, 0, .4);
+  animation: slide-in .3s cubic-bezier(.22, 1, .36, 1);
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+.tag-editor-head {
+  height: 64px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.tag-editor-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.tag-count {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  padding: 1px 10px;
+  border-radius: 999px;
+}
+
+.tag-editor-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.tag-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tag-section-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.tag-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tag-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color .15s, background .15s;
+}
+
+.tag-clear:hover {
+  color: #f87171;
+  background: rgba(239, 68, 68, .1);
+}
+
+.tag-low-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #f97316;
+}
+
+.tag-add-form {
+  position: relative;
+}
+
+.tag-add-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  transition: color .15s, background .15s;
+}
+
+.tag-add-btn:hover:not(:disabled) {
+  color: var(--accent-2);
+  background: var(--accent-soft);
+}
+
+.tag-add-btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: rgba(39, 39, 42, .8);
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+}
+
+.tag-chip.trigger {
+  background: rgba(99, 102, 241, .1);
+  border-color: rgba(99, 102, 241, .3);
+  color: var(--accent-2);
+  font-weight: 500;
+}
+
+.tag-chip-score {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: .85;
+}
+
+.tag-chip-x {
+  display: inline-flex;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: .5;
+  padding: 0;
+  border-radius: 3px;
+  transition: opacity .15s;
+}
+
+.tag-chip-x:hover {
+  opacity: 1;
+}
+
+.tag-section-bulk {
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.tag-bulk-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tag-bulk-text {
+  height: 140px;
+  resize: none;
+  line-height: 1.6;
+}
+
+@media (max-width: 820px) {
+  .tag-editor-side {
+    width: 320px;
+  }
+}

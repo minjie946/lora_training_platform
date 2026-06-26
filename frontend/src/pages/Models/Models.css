@@ -1,0 +1,22 @@
+/* 模型库页：使用公共样式（表格 / 按钮）。 */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cell-check {
+  width: 40px;
+  text-align: center;
+}
+
+.cell-check input {
+  cursor: pointer;
+  accent-color: var(--accent, #4f46e5);
+}
+
+tr.row-selected td {
+  background: var(--accent-soft, rgba(99, 102, 241, 0.1));
+}

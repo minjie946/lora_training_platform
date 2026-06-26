@@ -1,0 +1,48 @@
+/* 概览页专属：统计卡片网格、环境自检项、状态圆点。 */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.stat {
+  background: rgba(24, 24, 27, .5);
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.stat .num {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.stat .label {
+  color: var(--text-dim);
+  margin-top: 6px;
+}
+
+.preflight-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.dot.ok {
+  background: var(--ok);
+}
+
+.dot.bad {
+  background: var(--err);
+}

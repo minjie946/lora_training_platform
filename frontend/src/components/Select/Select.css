@@ -1,0 +1,80 @@
+/* 自定义下拉框：面板贴在框上/下，避免原生 select 居中遮挡。 */
+
+.select {
+  position: relative;
+  width: 100%;
+}
+
+.select-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.select-trigger:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.select.disabled .select-trigger,
+.select-trigger:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.select-caret {
+  color: var(--text-dim);
+  transition: transform .15s;
+  font-size: 12px;
+}
+
+.select-caret.up {
+  transform: rotate(180deg);
+}
+
+.select-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+}
+
+.select-panel.down {
+  top: calc(100% + 6px);
+}
+
+.select-panel.up {
+  bottom: calc(100% + 6px);
+}
+
+.select-option {
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.select-option:hover {
+  background: var(--panel-2);
+}
+
+.select-option.active {
+  background: var(--accent);
+  color: #fff;
+}

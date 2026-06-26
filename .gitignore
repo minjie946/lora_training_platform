@@ -1,0 +1,17 @@
+# Python / uv
+backend/.venv/
+backend/workspace/
+__pycache__/
+*.pyc
+.python-version
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
+# Models & data (large)
+*.safetensors
+*.ckpt
+
+# OS
+.DS_Store

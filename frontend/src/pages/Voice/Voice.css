@@ -1,0 +1,127 @@
+/* 声音克隆 / SVC 页专属：左右分栏布局、数据集列表、音频片段、训练区。 */
+
+.voice-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.voice-split {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 左侧数据集列表：自身可滚动，整体不超过视口 */
+.voice-aside {
+  align-self: start;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 140px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 右侧详情：独立滚动区 */
+.voice-detail {
+  min-width: 0;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.voice-ds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.voice-ds-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+
+.voice-ds-item:hover {
+  background: var(--panel-2);
+}
+
+.voice-ds-item.active {
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, .08);
+}
+
+.voice-ds-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.voice-clip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+.voice-clip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.voice-clip-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.voice-clip audio {
+  max-width: 220px;
+}
+
+.voice-train-box {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.voice-upload-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 900px) {
+  .voice-split {
+    grid-template-columns: 1fr;
+  }
+
+  .voice-aside {
+    position: static;
+    max-height: 300px;
+  }
+
+  .voice-detail {
+    max-height: none;
+    overflow: visible;
+  }
+}

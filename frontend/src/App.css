@@ -1,0 +1,105 @@
+/* 应用布局外壳：侧边栏、品牌区、导航、主内容区。 */
+
+.app {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 256px;
+  flex: none;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 64px;
+  flex: none;
+  font-size: 18px;
+  font-weight: 700;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.brand-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  object-fit: contain;
+  flex: none;
+}
+
+.brand-text {
+  color: var(--text);
+  letter-spacing: .06em;
+}
+
+.nav-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 24px;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-weight: 500;
+  border-right: 2px solid transparent;
+  transition: color .15s, background .15s, border-color .15s;
+}
+
+.nav-icon {
+  flex: none;
+  color: var(--text-dim);
+  transition: color .15s;
+}
+
+.nav-link:hover {
+  background: rgba(39, 39, 42, .5);
+  color: var(--text);
+}
+
+.nav-link:hover .nav-icon {
+  color: var(--text);
+}
+
+.nav-link.active {
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  border-right-color: var(--accent-hover);
+}
+
+.nav-link.active .nav-icon {
+  color: var(--accent-2);
+}
+
+/* sidebar section divider */
+.nav-section {
+  margin: 16px 16px 8px;
+  padding: 8px 8px 0;
+  border-top: 1px solid var(--border-soft);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px;
+  min-width: 0;
+}
