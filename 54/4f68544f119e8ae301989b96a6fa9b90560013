@@ -1,0 +1,21 @@
+backend/app/services/backends/resource.py
+  s_59ef70ddde2573::t_7128cbc5237f86 1-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "544f68544f119e8ae301989b96a6fa9b90560013",
+  "prompts": {},
+  "sessions": {
+    "s_59ef70ddde2573": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a5ccc3544251399c8924e3b",
+        "model": "openrouter-3o__max"
+      },
+      "human_author": "minjie.946 <minjie.946@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
