@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..db import session_dependency
@@ -15,6 +16,7 @@ from ..schemas import (
     DatasetRead,
     DatasetUpdate,
     ImageItem,
+    QualityCheckResult,
 )
 from ..services import caption_manager
 from ..services import caption_service as cap
@@ -197,6 +199,38 @@ def delete_image(dataset_id: int, filename: str, session: Session = Depends(sess
     session.add(obj)
     session.commit()
     return {"ok": True}
+
+
+class BulkDeleteImagesIn(BaseModel):
+    filenames: list[str]
+
+
+@router.post("/{dataset_id}/images/bulk-delete")
+def bulk_delete_images(
+    dataset_id: int,
+    payload: BulkDeleteImagesIn,
+    session: Session = Depends(session_dependency),
+):
+    """Delete multiple images (and their captions/thumbnails/quality entries)."""
+    obj = _get_or_404(session, dataset_id)
+    if not payload.filenames:
+        return {"ok": True, "deleted": 0}
+    deleted = ds.delete_images(dataset_id, payload.filenames)
+    obj.image_count = ds.count_images(dataset_id)
+    session.add(obj)
+    session.commit()
+    return {"ok": True, "deleted": deleted}
+
+
+@router.post("/{dataset_id}/quality-check", response_model=QualityCheckResult)
+def quality_check(dataset_id: int, session: Session = Depends(session_dependency)):
+    """Run heuristic + face-detection quality analysis over all images.
+
+    Results are cached to disk and surfaced per-image via list_images().
+    """
+    _get_or_404(session, dataset_id)
+    summary = ds.run_quality_check(dataset_id)
+    return QualityCheckResult(**summary)
 
 
 # ---- Captions ----

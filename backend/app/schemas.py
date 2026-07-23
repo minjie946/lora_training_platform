@@ -62,6 +62,24 @@ class TagScore(BaseModel):
     confidence: float
 
 
+class QualityIssue(BaseModel):
+    code: str
+    label: str
+    severity: str  # "warn" | "bad"
+
+
+class ImageQuality(BaseModel):
+    level: str  # "ok" | "warn" | "bad"
+    issues: list[QualityIssue] = []
+
+
+class QualityCheckResult(BaseModel):
+    total: int
+    ok: int
+    warn: int
+    bad: int
+
+
 class ImageItem(BaseModel):
     filename: str
     caption: str
@@ -69,6 +87,8 @@ class ImageItem(BaseModel):
     image_url: str
     # WD14 per-tag confidence scores (None unless WD14 tagging was run).
     tag_scores: Optional[list[TagScore]] = None
+    # Heuristic image-quality analysis (None unless a quality check was run).
+    quality: Optional[ImageQuality] = None
 
 
 class CaptionUpdate(BaseModel):
@@ -128,6 +148,7 @@ class JobRead(BaseModel):
     latest_loss: Optional[float]
     error: Optional[str]
     created_at: datetime
+    queued_at: Optional[datetime] = None
     finished_at: Optional[datetime]
     # True when a resumable kohya `-state` checkpoint exists on disk, so a
     # paused job can actually continue. Drives the pause-vs-stop UI.

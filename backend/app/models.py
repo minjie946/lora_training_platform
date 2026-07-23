@@ -30,7 +30,7 @@ class TrainingJob(SQLModel, table=True):
     base_model: str = ""
     backend: str = "local_mps"
     params: str = "{}"  # JSON-encoded training parameters
-    status: str = "pending"  # pending | running | succeeded | failed | stopped
+    status: str = "pending"  # pending | queued | running | succeeded | failed | stopped | paused
     progress: float = 0.0
     current_step: int = 0
     total_step: int = 0
@@ -38,6 +38,7 @@ class TrainingJob(SQLModel, table=True):
     pid: Optional[int] = None
     error: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    queued_at: Optional[datetime] = None  # set when placed in the run queue
     finished_at: Optional[datetime] = None
 
 

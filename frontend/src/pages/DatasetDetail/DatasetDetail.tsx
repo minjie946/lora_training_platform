@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
-  Tag, Upload, Wand2, Edit3, Eye, Trash2, X, Plus, Save, Pencil, HelpCircle,
+  Tag, Upload, Wand2, Edit3, Eye, Trash2, X, Plus, Save, Pencil, HelpCircle, ShieldCheck,
+  CheckSquare, Square, ListChecks,
 } from 'lucide-react'
 import { api, BaseModel, Dataset, ImageItem } from '../../api/client'
 import Select from '../../components/Select/Select'
@@ -17,6 +18,7 @@ export default function DatasetDetail() {
   const [busy, setBusy] = useState(false)
   const [uploadPct, setUploadPct] = useState<number | null>(null)
   const [captioning, setCaptioning] = useState(false)
+  const [checkingQuality, setCheckingQuality] = useState(false)
   const [editing, setEditing] = useState<ImageItem | null>(null)
   const [preview, setPreview] = useState<ImageItem | null>(null)
   const [capMethod, setCapMethod] = useState('wd14') // auto | wd14 | blip，默认 WD14（写实/动漫均可，带置信度）
@@ -24,6 +26,13 @@ export default function DatasetDetail() {
   const [excludeBodyFace, setExcludeBodyFace] = useState(false)
   const [excludeTags, setExcludeTags] = useState('')
   const [editingBase, setEditingBase] = useState(false)
+  // 图片筛选：按 WD14 置信度（high/mid/low）与质量检测结果（ok/warn/bad）过滤
+  const [confFilter, setConfFilter] = useState<'all' | 'high' | 'mid' | 'low'>('all')
+  const [qualFilter, setQualFilter] = useState<'all' | 'ok' | 'warn' | 'bad'>('all')
+  // 批量删除：选择模式 + 已选文件名集合
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -106,6 +115,52 @@ export default function DatasetDetail() {
     load()
   }
 
+  // 退出选择模式并清空选择
+  const exitSelect = () => { setSelectMode(false); setSelected(new Set()) }
+
+  const toggleSelect = (filename: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(filename)) next.delete(filename); else next.add(filename)
+      return next
+    })
+  }
+
+  // 全选/取消全选（仅针对当前筛选后可见的图片）
+  const toggleSelectAll = (visible: ImageItem[]) => {
+    setSelected((prev) => {
+      const allSelected = visible.length > 0 && visible.every((im) => prev.has(im.filename))
+      if (allSelected) return new Set()
+      return new Set(visible.map((im) => im.filename))
+    })
+  }
+
+  const bulkDelete = async () => {
+    const names = Array.from(selected)
+    if (names.length === 0) return
+    if (!confirm(`确认删除选中的 ${names.length} 张图片？此操作不可恢复。`)) return
+    setBulkDeleting(true); setMsg('')
+    try {
+      const r = await api.bulkDeleteImages(dsId, names)
+      setMsg(`已删除 ${r.deleted} 张图片`)
+      exitSelect()
+      await load()
+    } catch (e: any) { setMsg(e.message) } finally { setBulkDeleting(false) }
+  }
+
+  const runQualityCheck = async () => {
+    if (images.length === 0) return
+    setCheckingQuality(true); setMsg('')
+    try {
+      const r = await api.checkQuality(dsId)
+      const flagged = r.warn + r.bad
+      setMsg(flagged > 0
+        ? `质量检测完成：共 ${r.total} 张，${flagged} 张建议核对（${r.bad} 张问题较大）`
+        : `质量检测完成：共 ${r.total} 张，均无明显问题`)
+      await load()
+    } catch (e: any) { setMsg(e.message) } finally { setCheckingQuality(false) }
+  }
+
   const saveBaseModel = async (filename: string) => {
     setEditingBase(false)
     if (!ds || filename === ds.base_model) return
@@ -130,6 +185,16 @@ export default function DatasetDetail() {
       : capMethod === 'blip' ? 'BLIP（自然语言描述）'
         : `自动（跟随底模：${autoCaptioner}）`
   const showThreshold = capMethod === 'wd14' || (capMethod === 'auto' && !isRealistic)
+
+  // 依据 WD14 置信度与质量检测结果过滤图片。
+  const hasConfData = images.some((im) => imageConfidenceLevel(im) !== null)
+  const hasQualData = images.some((im) => im.quality != null)
+  const filteredImages = images.filter((im) => {
+    if (confFilter !== 'all' && imageConfidenceLevel(im) !== confFilter) return false
+    if (qualFilter !== 'all' && (im.quality?.level ?? null) !== qualFilter) return false
+    return true
+  })
+  const filtering = confFilter !== 'all' || qualFilter !== 'all'
 
   return (
     <div>
@@ -179,8 +244,22 @@ export default function DatasetDetail() {
           <button className="btn ghost" disabled={busy || captioning || images.length === 0} onClick={autoCaption}>
             {captioning ? (<><span className="spinner" />打标中…</>) : (<><Wand2 size={16} className="icon-accent" />自动打标 / 注入触发词</>)}
           </button>
+          <button className="btn ghost tip" data-tip={'检测图片是否适合作为训练素材：分辨率、清晰度（模糊）、曝光、宽高比，以及是否有清晰正脸/多人脸。\n结果仅作提醒，不影响训练。'} disabled={busy || checkingQuality || images.length === 0} onClick={runQualityCheck}>
+            {checkingQuality ? (<><span className="spinner" />检测中…</>) : (<><ShieldCheck size={16} className="icon-accent" />检测质量</>)}
+          </button>
           <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple hidden
             onChange={(e) => upload(e.target.files)} />
+          {images.length > 0 && (
+            selectMode ? (
+              <button className="btn ghost" onClick={exitSelect}>
+                <X size={16} />取消选择
+              </button>
+            ) : (
+              <button className="btn ghost" disabled={busy || captioning} onClick={() => setSelectMode(true)}>
+                <ListChecks size={16} className="icon-accent" />批量删除
+              </button>
+            )
+          )}
           <span className="spacer" />
           {msg && <span className="muted">{msg}</span>}
         </div>
@@ -206,21 +285,35 @@ export default function DatasetDetail() {
             />
           </div>
           {showThreshold && (
-            <div className="cap-field" style={{ width: 220 }}>
+            <div className="cap-field" style={{ minWidth: 260 }}>
               <div className="cap-label-row">
                 <label className="cap-label">
-                  WD14 阈值
+                  打标强度
                   <span className="cap-help tip" tabIndex={0}
-                    data-tip={'置信度阈值：模型给每个标签打 0~1 的分，只有 ≥ 阈值的标签才会被写入。\n\n· 调低（如 0.2）→ 保留更多标签，能标出身材、姿势等细粒度属性，但噪声/错标增多\n· 调高（如 0.5）→ 只留高置信标签，更干净但可能漏标\n· 0.35 为通用默认；标不出想要的属性就往下调，杂标太多就往上调'}>
+                    data-tip={'预设一键切换 WD14 阈值（模型给每个标签打 0~1 的分，只有 ≥ 阈值的标签才写入）：\n\n· 宽松 0.25 → 标签最多，能标出身材、姿势等细粒度属性，但噪声/错标也多\n· 均衡 0.35 → 通用默认，兼顾数量与准确\n· 严格 0.50 → 只留高置信标签，最干净但可能漏标\n\n选完预设仍可用下方滑块微调。'}>
                     <HelpCircle size={13} />
                   </span>
                 </label>
                 <span className="cap-value">{threshold.toFixed(2)}</span>
               </div>
+              <div className="preset-row">
+                {([
+                  ['宽松', 0.25], ['均衡', 0.35], ['严格', 0.5],
+                ] as const).map(([label, val]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    className={`preset-chip${Math.abs(threshold - val) < 0.001 ? ' active' : ''}`}
+                    onClick={() => setThreshold(val)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <input
                 type="range" min={0.1} max={0.7} step={0.05} value={threshold}
                 onChange={(e) => setThreshold(Number(e.target.value))}
-                style={{ width: '100%' }}
+                style={{ width: '100%', marginTop: 8 }}
               />
             </div>
           )}
@@ -253,57 +346,148 @@ export default function DatasetDetail() {
       {images.length === 0 ? (
         <div className="card"><div className="empty">还没有图片，点击上方上传。</div></div>
       ) : (
-        <div className="img-grid-wrap">
-          {captioning && (
-            <div className="grid-overlay">
-              <span className="spinner lg" />
-              <span>正在打标…</span>
+        <>
+          {selectMode && (
+            <div className="select-bar">
+              <button className="filter-chip" onClick={() => toggleSelectAll(filteredImages)}>
+                {filteredImages.length > 0 && filteredImages.every((im) => selected.has(im.filename))
+                  ? (<><CheckSquare size={14} />取消全选</>)
+                  : (<><Square size={14} />全选{filtering ? '（当前筛选）' : ''}</>)}
+              </button>
+              <span className="muted filter-count">已选 {selected.size} 张</span>
+              <span className="spacer" />
+              <button className="btn danger sm" disabled={selected.size === 0 || bulkDeleting} onClick={bulkDelete}>
+                {bulkDeleting ? (<><span className="spinner" />删除中…</>) : (<><Trash2 size={15} />删除选中（{selected.size}）</>)}
+              </button>
             </div>
           )}
-          <div className="img-grid">
-            {images.map((im) => {
-              const tagCount = im.caption.split(',').map((t) => t.trim()).filter(Boolean).length
-              const conf = imageConfidenceLevel(im)
-              return (
-                <div className="img-cell" key={im.filename} data-confidence={conf ?? undefined}>
-                  <div className="img-media">
-                    <img src={im.thumbnail_url} alt={im.filename} className="img-thumb"
-                      onClick={() => setEditing(im)} />
-                    {/* hover 浮出操作层 */}
-                    <div className="img-overlay">
-                      <button className="round-btn primary" title="编辑标签" onClick={() => setEditing(im)}>
-                        <Edit3 size={18} />
-                      </button>
-                      <button className="round-btn" title="预览原图" onClick={() => setPreview(im)}>
-                        <Eye size={18} />
-                      </button>
-                      <button className="round-btn danger" title="删除图片" onClick={() => removeImage(im.filename)}>
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                    {conf && (
-                      <span className={`conf-badge conf-${conf}`}
-                        title={conf === 'low' ? '存在低置信度标签，建议核对'
-                          : conf === 'mid' ? '含中等置信度标签，可留意' : '标签置信度较高'}>
-                        {conf === 'low' ? '需核对' : conf === 'mid' ? '留意' : '可信'}
-                      </span>
-                    )}
-                    <span className="tag-badge" title="标签数量">
-                      <Tag size={12} />
-                      {tagCount}
-                    </span>
-                  </div>
-                  <div className="cap">
-                    <div className="cap-name" title={im.filename}>{im.filename}</div>
-                    <div className="cap-tags" title="点击编辑标签" onClick={() => setEditing(im)}>
-                      {im.caption || <span className="muted">未打标</span>}
-                    </div>
-                  </div>
+          {(hasConfData || hasQualData) && (
+            <div className="filter-bar">
+              {hasConfData && (
+                <div className="filter-group">
+                  <span className="filter-label">置信度</span>
+                  {([
+                    ['all', '全部'], ['high', '可信'], ['mid', '留意'], ['low', '需核对'],
+                  ] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      className={`filter-chip${confFilter === v ? ' active' : ''}${v !== 'all' ? ` conf-${v}` : ''}`}
+                      onClick={() => setConfFilter(v)}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-              )
-            })}
+              )}
+              {hasQualData && (
+                <div className="filter-group">
+                  <span className="filter-label">质量</span>
+                  {([
+                    ['all', '全部'], ['ok', '无问题'], ['warn', '待核对'], ['bad', '不建议'],
+                  ] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      className={`filter-chip${qualFilter === v ? ' active' : ''}${v !== 'all' ? ` qual-${v}` : ''}`}
+                      onClick={() => setQualFilter(v)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <span className="spacer" />
+              <span className="muted filter-count">
+                {filtering ? `筛选出 ${filteredImages.length} / ${images.length} 张` : `共 ${images.length} 张`}
+              </span>
+              {filtering && (
+                <button className="filter-chip" onClick={() => { setConfFilter('all'); setQualFilter('all') }}>
+                  清除筛选
+                </button>
+              )}
+            </div>
+          )}
+          <div className="img-grid-wrap">
+            {captioning && (
+              <div className="grid-overlay">
+                <span className="spinner lg" />
+                <span>正在打标…</span>
+              </div>
+            )}
+            {filteredImages.length === 0 ? (
+              <div className="card"><div className="empty">没有符合筛选条件的图片。</div></div>
+            ) : (
+              <div className="img-grid">
+                {filteredImages.map((im) => {
+                  const tagCount = im.caption.split(',').map((t) => t.trim()).filter(Boolean).length
+                  const conf = imageConfidenceLevel(im)
+                  const checked = selected.has(im.filename)
+                  return (
+                    <div
+                      className="img-cell"
+                      key={im.filename}
+                      data-confidence={conf ?? undefined}
+                      data-selected={selectMode && checked ? '' : undefined}
+                    >
+                      <div className="img-media">
+                        <img src={im.thumbnail_url} alt={im.filename} className="img-thumb"
+                          onClick={() => (selectMode ? toggleSelect(im.filename) : setEditing(im))} />
+                        {selectMode ? (
+                          <button
+                            className={`select-check${checked ? ' checked' : ''}`}
+                            title={checked ? '取消选择' : '选择'}
+                            onClick={() => toggleSelect(im.filename)}
+                          >
+                            {checked ? <CheckSquare size={18} /> : <Square size={18} />}
+                          </button>
+                        ) : (
+                          /* hover 浮出操作层 */
+                          <div className="img-overlay">
+                            <button className="round-btn primary" title="编辑标签" onClick={() => setEditing(im)}>
+                              <Edit3 size={18} />
+                            </button>
+                            <button className="round-btn" title="预览原图" onClick={() => setPreview(im)}>
+                              <Eye size={18} />
+                            </button>
+                            <button className="round-btn danger" title="删除图片" onClick={() => removeImage(im.filename)}>
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        )}
+                        {im.quality && im.quality.level !== 'ok' && (
+                          <span
+                            className={`quality-badge quality-${im.quality.level}`}
+                            title={(im.quality.level === 'bad' ? '不建议用于训练：' : '建议核对：')
+                              + (im.quality.issues.map((i) => i.label).join('、') || '存在质量问题')}
+                          >
+                            {im.quality.level === 'bad' ? '不建议' : '待核对'}
+                          </span>
+                        )}
+                        {conf && !selectMode && (
+                          <span className={`conf-badge conf-${conf}`}
+                            title={conf === 'low' ? '存在低置信度标签，建议核对'
+                              : conf === 'mid' ? '含中等置信度标签，可留意' : '标签置信度较高'}>
+                            {conf === 'low' ? '需核对' : conf === 'mid' ? '留意' : '可信'}
+                          </span>
+                        )}
+                        <span className="tag-badge" title="标签数量">
+                          <Tag size={12} />
+                          {tagCount}
+                        </span>
+                      </div>
+                      <div className="cap">
+                        <div className="cap-name" title={im.filename}>{im.filename}</div>
+                        <div className="cap-tags" title="点击编辑标签"
+                          onClick={() => (selectMode ? toggleSelect(im.filename) : setEditing(im))}>
+                          {im.caption || <span className="muted">未打标</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
-        </div>
+        </>
       )}
 
       {editing && (

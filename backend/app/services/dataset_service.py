@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import re
 import shutil
 import zipfile
@@ -29,6 +30,7 @@ from ..config import ALLOWED_IMAGE_EXTS, DATASETS_DIR, THUMBNAIL_SIZE
 _HEIC_EXTS = {".heic", ".heif"}
 
 THUMB_DIRNAME = ".thumbnails"
+QUALITY_FILENAME = ".quality.json"
 
 
 def _safe_concept(concept: str) -> str:
@@ -129,6 +131,7 @@ def list_images(dataset_id: int) -> list[dict]:
     img_dir = find_image_dir(dataset_id)
     if not img_dir:
         return []
+    quality = _read_quality_map(img_dir)
     items: list[dict] = []
     for p in sorted(img_dir.iterdir()):
         if p.suffix.lower() not in ALLOWED_IMAGE_EXTS:
@@ -143,6 +146,8 @@ def list_images(dataset_id: int) -> list[dict]:
                 "image_url": f"/api/datasets/{dataset_id}/images/{p.name}/raw",
                 # WD14 per-tag confidence scores (None unless WD14 was run).
                 "tag_scores": cap.read_wdtags(p),
+                # Image-quality analysis (None unless a quality check was run).
+                "quality": quality.get(p.name),
             }
         )
     return items
@@ -275,10 +280,80 @@ def delete_image(dataset_id: int, filename: str) -> bool:
     p.with_suffix(".txt").unlink(missing_ok=True)
     cap.delete_wdtags(p)
     _thumb_path(img_dir, filename).unlink(missing_ok=True)
+    _drop_quality_entry(img_dir, filename)
     return True
+
+
+def delete_images(dataset_id: int, filenames: list[str]) -> int:
+    """Delete several images at once, returning how many were actually removed."""
+    return sum(1 for name in filenames if delete_image(dataset_id, name))
 
 
 def delete_dataset_files(dataset_id: int) -> None:
     root = dataset_root(dataset_id)
     if root.exists():
         shutil.rmtree(root, ignore_errors=True)
+
+
+# ---- Image quality analysis (advisory) -------------------------------------
+def _quality_path(img_dir: Path) -> Path:
+    return img_dir / QUALITY_FILENAME
+
+
+def _read_quality_map(img_dir: Path) -> dict:
+    """Read the cached {filename: quality_result} map, or {} if none/invalid."""
+    qp = _quality_path(img_dir)
+    if not qp.exists():
+        return {}
+    try:
+        data = json.loads(qp.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def read_quality(dataset_id: int) -> dict | None:
+    img_dir = find_image_dir(dataset_id)
+    if not img_dir:
+        return None
+    data = _read_quality_map(img_dir)
+    return data or None
+
+
+def run_quality_check(dataset_id: int) -> dict:
+    """Analyze every image in the dataset, cache results, return a summary.
+
+    Writes a single ``.quality.json`` mapping filename -> analysis result.
+    Advisory only: never raises per-image (see image_quality.analyze_image).
+    """
+    from . import image_quality  # local import keeps optional deps lazy
+
+    img_dir = find_image_dir(dataset_id)
+    if not img_dir:
+        return {"total": 0, "ok": 0, "warn": 0, "bad": 0}
+
+    results: dict[str, dict] = {}
+    counts = {"ok": 0, "warn": 0, "bad": 0}
+    for p in sorted(img_dir.iterdir()):
+        if p.suffix.lower() not in ALLOWED_IMAGE_EXTS:
+            continue
+        res = image_quality.analyze_image(p)
+        results[p.name] = res
+        counts[res.get("level", "ok")] = counts.get(res.get("level", "ok"), 0) + 1
+
+    _quality_path(img_dir).write_text(
+        json.dumps(results, ensure_ascii=False), encoding="utf-8"
+    )
+    return {"total": len(results), **counts}
+
+
+def _drop_quality_entry(img_dir: Path, filename: str) -> None:
+    """Remove one filename from the cached quality map (best-effort)."""
+    qp = _quality_path(img_dir)
+    data = _read_quality_map(img_dir)
+    if filename in data:
+        del data[filename]
+        try:
+            qp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass

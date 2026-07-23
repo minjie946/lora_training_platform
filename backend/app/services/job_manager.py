@@ -28,6 +28,15 @@ class _RunningJob:
 _running: dict[int, _RunningJob] = {}
 _lock = threading.Lock()
 
+# Local training uses a single GPU/MPS device, so only one job runs at a time.
+# Extra start requests are placed in a queue and dispatched when the device
+# frees up. DB status "queued" + queued_at is the durable source of truth for
+# ordering; _queue_resume only carries the (transient) resume intent and is
+# reset to a fresh start on reload. _dispatch_lock serializes dispatch so two
+# threads can't both grab the free device.
+_queue_resume: dict[int, bool] = {}
+_dispatch_lock = threading.Lock()
+
 
 def job_dir(job_id: int) -> Path:
     return JOBS_DIR / str(job_id)
@@ -151,6 +160,108 @@ def start_job(job_id: int, resume: bool = False) -> None:
     thread.start()
 
 
+def has_active_job(exclude_job_id: Optional[int] = None) -> bool:
+    """True if some job currently occupies the (single) training device.
+
+    Considers both the in-process registry and any DB row marked running with a
+    live PID (covers a job re-attached after a backend reload).
+    """
+    with _lock:
+        for jid in _running:
+            if jid != exclude_job_id:
+                return True
+    from sqlmodel import select
+
+    with get_session() as session:
+        rows = session.exec(
+            select(TrainingJob).where(TrainingJob.status == "running")
+        ).all()
+        for j in rows:
+            if j.id != exclude_job_id and _pid_alive(j.pid):
+                return True
+    return False
+
+
+def start_or_queue(job_id: int, resume: bool = False) -> str:
+    """Start a job now if the device is free, otherwise enqueue it.
+
+    Returns "running" if launched immediately, or "queued" if placed in line.
+    The next queued job is dispatched automatically when the active one ends
+    (see _supervise -> _start_next_queued).
+    """
+    with _dispatch_lock:
+        if has_active_job(exclude_job_id=job_id):
+            _enqueue(job_id, resume)
+            return "queued"
+        start_job(job_id, resume=resume)
+        return "running"
+
+
+def _enqueue(job_id: int, resume: bool) -> None:
+    """Mark a job queued (durable ordering via queued_at)."""
+    _queue_resume[job_id] = resume
+    _update_job(job_id, status="queued", queued_at=datetime.utcnow(), error=None)
+
+
+def dequeue_job(job_id: int) -> bool:
+    """Remove a job from the queue, back to 'pending'. No-op if not queued."""
+    with get_session() as session:
+        job = session.get(TrainingJob, job_id)
+        if not job or job.status != "queued":
+            return False
+    _queue_resume.pop(job_id, None)
+    _update_job(job_id, status="pending", queued_at=None)
+    return True
+
+
+def _next_queued_id() -> Optional[int]:
+    """Oldest queued job id (FIFO by queued_at, then id), or None."""
+    from sqlmodel import select
+
+    with get_session() as session:
+        rows = session.exec(
+            select(TrainingJob)
+            .where(TrainingJob.status == "queued")
+            .order_by(TrainingJob.queued_at, TrainingJob.id)
+        ).all()
+        return rows[0].id if rows else None
+
+
+def _backend_name_for(job_id: int) -> Optional[str]:
+    with get_session() as session:
+        job = session.get(TrainingJob, job_id)
+        return job.backend if job else None
+
+
+def _start_next_queued() -> None:
+    """Dispatch the next queued job if the device is free. Safe to call anytime.
+
+    Skips over jobs that fail preflight or launch (marking them failed) so the
+    queue keeps draining instead of stalling on a bad job.
+    """
+    with _dispatch_lock:
+        if has_active_job():
+            return
+        while True:
+            nxt = _next_queued_id()
+            if nxt is None:
+                return
+            resume = _queue_resume.pop(nxt, False)
+            backend = _backend_name_for(nxt)
+            try:
+                if backend is not None:
+                    pf = get_backend(backend).preflight()
+                    if not pf.ok:
+                        _update_job(nxt, status="failed", queued_at=None,
+                                    error=f"环境检查未通过: {pf.detail}")
+                        continue  # try the next queued job
+                start_job(nxt, resume=resume)
+                return
+            except Exception as e:  # noqa: BLE001
+                _update_job(nxt, status="failed", queued_at=None, error=f"启动失败: {e}")
+                continue
+
+
 def _latest_state_dir(job_id: int) -> Optional[Path]:
     """Find the most recent kohya `-state` checkpoint dir for a job, if any.
 
@@ -175,6 +286,12 @@ def _supervise(job_id: int, proc) -> None:
     lp = log_path(job_id)
     lp.parent.mkdir(parents=True, exist_ok=True)
     best_total = 0
+    # On resume, sd-scripts loads a checkpoint and its tqdm bar counts only the
+    # REMAINING steps from 0. We read the baseline (already-completed steps) from
+    # its "load train state ... 'current_step': N" line and offset every parsed
+    # step by it, so the UI shows real progress (e.g. 80%->100%) instead of
+    # collapsing back to 0%. 0 for a fresh run.
+    resume_offset = 0
     pos = 0
     try:
         while True:
@@ -189,12 +306,15 @@ def _supervise(job_id: int, proc) -> None:
                     if upd.is_empty():
                         continue
                     fields: dict = {}
+                    if upd.state_step is not None and upd.state_step > resume_offset:
+                        resume_offset = upd.state_step
                     if upd.total_step and upd.total_step > best_total:
                         best_total = upd.total_step
                     if upd.current_step is not None and best_total:
-                        fields["current_step"] = upd.current_step
+                        cur = upd.current_step + resume_offset
+                        fields["current_step"] = min(cur, best_total)
                         fields["total_step"] = best_total
-                        fields["progress"] = round(min(upd.current_step / best_total, 1.0), 4)
+                        fields["progress"] = round(min(cur / best_total, 1.0), 4)
                     if upd.loss is not None:
                         fields["latest_loss"] = upd.loss
                     if fields:
@@ -209,6 +329,8 @@ def _supervise(job_id: int, proc) -> None:
     _finalize(job_id, code)
     with _lock:
         _running.pop(job_id, None)
+    # Device is free now — dispatch the next queued job, if any.
+    _start_next_queued()
 
 
 def _finalize(job_id: int, return_code: int) -> None:
@@ -348,6 +470,7 @@ def stop_job(job_id: int) -> bool:
     if _pid_alive(pid):
         _update_job(job_id, status="stopped", finished_at=datetime.utcnow())
         _kill_pid_group(pid)  # type: ignore[arg-type]
+        _start_next_queued()
         return True
 
     # Case 3: row says running but the process is already gone — reconcile.
@@ -358,6 +481,7 @@ def stop_job(job_id: int) -> bool:
             finished_at=datetime.utcnow(),
             error=job_error_if_unset(job_id, "进程已不存在，已标记为停止"),
         )
+        _start_next_queued()
         return True
 
     return False
@@ -393,10 +517,12 @@ def pause_job(job_id: int) -> bool:
     if _pid_alive(pid):
         _update_job(job_id, status="paused", finished_at=None)
         _kill_pid_group(pid)  # type: ignore[arg-type]
+        _start_next_queued()
         return True
 
     # Process already gone — still allow resume from whatever checkpoint exists.
     _update_job(job_id, status="paused")
+    _start_next_queued()
     return True
 
 
@@ -420,7 +546,8 @@ def resume_job(job_id: int) -> bool:
             "尚无可续训的检查点：需完成至少一个 epoch 才会生成断点。"
             "该任务暂停时还没跑完首个 epoch，无法从中途恢复。"
         )
-    start_job(job_id, resume=True)
+    # Queue behind any active job; resume intent (resume=True) is preserved.
+    start_or_queue(job_id, resume=True)
     return True
 
 
@@ -474,6 +601,11 @@ def reconcile_on_startup() -> None:
                 job_id,
                 error="后端重启时检测到训练进程已结束（异常退出或被系统终止）",
             )
+
+    # Queued jobs survive a reload via their DB status. The in-memory resume
+    # intent does not, so they resume as fresh starts. Kick the queue once the
+    # running set has been reconciled above.
+    _start_next_queued()
 
 
 def _reattach(job_id: int, pid: int) -> None:
@@ -533,6 +665,9 @@ def delete_job(job_id: int) -> bool:
     # Stop a live run first (kills the process group); ignore if already gone.
     if is_running(job_id):
         stop_job(job_id)
+
+    # Drop any queue bookkeeping for this job (it may have been queued).
+    _queue_resume.pop(job_id, None)
 
     with _lock:
         _running.pop(job_id, None)

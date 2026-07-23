@@ -4,6 +4,8 @@ export function statusBadge(status: string): { cls: string; text: string } {
   switch (status) {
     case 'running':
       return { cls: 'badge blue', text: '训练中' }
+    case 'queued':
+      return { cls: 'badge violet', text: '排队中' }
     case 'succeeded':
       return { cls: 'badge green', text: '成功' }
     case 'failed':
@@ -51,6 +53,7 @@ export function inferPhase(status: string, log: string[]): TrainPhase {
   if (status === 'stopped') return { key: 'stopped', label: '已停止', hint: '训练已被手动停止' }
   if (status === 'paused') return { key: 'stopped', label: '已暂停', hint: '训练已暂停，点击“继续训练”从上次检查点恢复' }
   if (status === 'pending') return { key: 'pending', label: '待启动', hint: '点击“启动训练”开始' }
+  if (status === 'queued') return { key: 'pending', label: '排队中', hint: '前面有任务正在训练，轮到时会自动开始' }
 
   // running：扫描最近的日志判断细分阶段
   const tail = log.slice(-40).join('\n').toLowerCase()

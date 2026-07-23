@@ -430,6 +430,12 @@ tr:hover td {
     border-color: rgba(99, 102, 241, .3);
 }
 
+.badge.violet {
+    background: rgba(168, 85, 247, .12);
+    color: #c4b5fd;
+    border-color: rgba(168, 85, 247, .4);
+}
+
 /* ---- 进度条 ---- */
 .progress {
     height: 10px;

@@ -164,6 +164,37 @@
   border-radius: 4px;
 }
 
+/* 打标强度预设：宽松 / 均衡 / 严格 一键切换阈值 */
+.preset-row {
+  display: flex;
+  gap: 6px;
+}
+
+.preset-chip {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 6px 0;
+  border-radius: 8px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+}
+
+.preset-chip:hover {
+  color: var(--text);
+  border-color: rgba(99, 102, 241, .5);
+}
+
+.preset-chip.active {
+  color: var(--accent-2);
+  background: rgba(99, 102, 241, .12);
+  border-color: rgba(99, 102, 241, .5);
+}
+
 .cap-check {
   display: flex;
   align-items: center;
@@ -254,6 +285,35 @@
   color: #fdba74;
   background: rgba(249, 115, 22, .15);
   border-color: rgba(249, 115, 22, .5);
+}
+
+/* 图片质量角标（放媒体区左下，避开左上置信度 / 右上标签数角标） */
+.quality-badge {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 2;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+  border: 1px solid transparent;
+  cursor: help;
+}
+
+.quality-badge.quality-warn {
+  color: #eab308;
+  background: rgba(234, 179, 8, .14);
+  border-color: rgba(234, 179, 8, .45);
+}
+
+.quality-badge.quality-bad {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, .18);
+  border-color: rgba(239, 68, 68, .6);
+  box-shadow: 0 0 10px rgba(239, 68, 68, .45);
 }
 
 .img-media {
@@ -695,4 +755,132 @@
   .tag-editor-side {
     width: 320px;
   }
+}
+
+/* ---- 图片筛选栏 ---- */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: rgba(24, 24, 27, .4);
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+
+.filter-chip {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s;
+}
+
+.filter-chip:hover {
+  color: var(--text);
+  border-color: rgba(99, 102, 241, .5);
+}
+
+/* 选中态：默认用主题靛蓝；置信度/质量档位选中时用各自语义色 */
+.filter-chip.active {
+  color: var(--accent-2);
+  background: rgba(99, 102, 241, .12);
+  border-color: rgba(99, 102, 241, .5);
+}
+
+.filter-chip.active.conf-high,
+.filter-chip.active.qual-ok {
+  color: #a3e635;
+  background: rgba(163, 230, 53, .12);
+  border-color: rgba(163, 230, 53, .45);
+}
+
+.filter-chip.active.conf-mid,
+.filter-chip.active.qual-warn {
+  color: #eab308;
+  background: rgba(234, 179, 8, .14);
+  border-color: rgba(234, 179, 8, .5);
+}
+
+.filter-chip.active.conf-low,
+.filter-chip.active.qual-bad {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, .16);
+  border-color: rgba(239, 68, 68, .55);
+}
+
+.filter-count {
+  font-size: 12px;
+}
+
+/* ---- 批量删除：选择操作条 + 卡片选中态 ---- */
+.select-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: rgba(99, 102, 241, .08);
+  border: 1px solid rgba(99, 102, 241, .4);
+  border-radius: 12px;
+}
+
+.select-bar .filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 选择模式下左上角的勾选按钮（覆盖在图片上） */
+.select-check {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #fff;
+  background: rgba(9, 9, 11, .6);
+  backdrop-filter: blur(6px);
+  transition: color .15s, background .15s;
+}
+
+.select-check.checked {
+  color: var(--accent-2);
+  background: rgba(99, 102, 241, .2);
+}
+
+/* 选中的卡片高亮描边 */
+.img-cell[data-selected] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, .5);
+}
+
+.img-cell[data-selected]:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, .6), 0 4px 16px rgba(0, 0, 0, .3);
 }

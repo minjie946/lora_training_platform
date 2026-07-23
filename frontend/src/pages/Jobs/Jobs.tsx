@@ -38,6 +38,9 @@ export default function Jobs() {
   const resume = async (job: Job) => {
     try { await api.resumeJob(job.id); load() } catch (e: any) { alert(`继续失败：${e.message}`) }
   }
+  const dequeue = async (job: Job) => {
+    try { await api.dequeueJob(job.id); load() } catch (e: any) { alert(`取消排队失败：${e.message}`) }
+  }
 
   return (
     <div>
@@ -70,8 +73,11 @@ export default function Jobs() {
                     <td>
                       <div className="row-actions">
                         <Link className="btn sm ghost" to={`/jobs/${j.id}`}>详情</Link>
-                        {j.status !== 'running' && j.status !== 'paused' && (
+                        {j.status !== 'running' && j.status !== 'paused' && j.status !== 'queued' && (
                           <Link className="btn sm ghost" to={`/jobs/${j.id}/edit`}>编辑</Link>
+                        )}
+                        {j.status === 'queued' && (
+                          <button className="btn sm ghost" onClick={() => dequeue(j)} title="从队列中移除，不再自动开始">取消排队</button>
                         )}
                         {j.status === 'running' && j.has_checkpoint && (
                           <button className="btn sm ghost" onClick={() => pause(j)} title="从最近的检查点暂停，之后可继续">暂停</button>

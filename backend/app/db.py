@@ -38,6 +38,7 @@ def _run_lightweight_migrations() -> None:
             ("caption_detail", "VARCHAR DEFAULT ''"),
         ],
         "loramodel": [("base_model", "VARCHAR DEFAULT ''")],
+        "trainingjob": [("queued_at", "DATETIME")],
         "remotehost": [
             ("rvc_dir", "VARCHAR DEFAULT '~/Retrieval-based-Voice-Conversion-WebUI'")
         ],

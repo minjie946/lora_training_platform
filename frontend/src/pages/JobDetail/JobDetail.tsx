@@ -67,6 +67,14 @@ export default function JobDetail() {
     }
   }, [job?.status, jobId])
 
+  // While queued, poll until the job starts (or leaves the queue) so the UI
+  // flips to "training" on its own when the device frees up.
+  useEffect(() => {
+    if (job?.status !== 'queued') return
+    const t = setInterval(refresh, 2000)
+    return () => clearInterval(t)
+  }, [job?.status, jobId])
+
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [log])
@@ -77,6 +85,7 @@ export default function JobDetail() {
     catch (e: any) { setErr(e.message) }
   }
   const stop = async () => { try { await api.stopJob(jobId); refresh() } catch (e: any) { setErr(e.message) } }
+  const dequeue = async () => { setErr(''); try { await api.dequeueJob(jobId); refresh() } catch (e: any) { setErr(e.message) } }
   const pause = async () => { setErr(''); try { await api.pauseJob(jobId); refresh() } catch (e: any) { setErr(e.message) } }
   const resume = async () => { setErr(''); try { await api.resumeJob(jobId); refresh() } catch (e: any) { setErr(e.message) } }
   const clone = async () => { const j = await api.cloneJob(jobId); window.location.href = `/jobs/${j.id}` }
@@ -101,10 +110,11 @@ export default function JobDetail() {
         <span className={b.cls}>{b.text}</span>
         <span className="spacer" />
         <Link className="btn ghost sm" to="/jobs">返回</Link>
-        {job.status !== 'running' && job.status !== 'paused' && (
+        {job.status !== 'running' && job.status !== 'paused' && job.status !== 'queued' && (
           <Link className="btn sm ghost" to={`/jobs/${jobId}/edit`}>编辑</Link>
         )}
-        {job.status !== 'running' && job.status !== 'paused' && <button className="btn sm" onClick={start}>启动训练</button>}
+        {job.status !== 'running' && job.status !== 'paused' && job.status !== 'queued' && <button className="btn sm" onClick={start}>启动训练</button>}
+        {job.status === 'queued' && <button className="btn sm ghost" onClick={dequeue}>取消排队</button>}
         {job.status === 'paused' && <button className="btn sm" onClick={resume}>继续训练</button>}
         {job.status === 'running' && job.has_checkpoint && (
           <button className="btn sm ghost" onClick={pause} title="从最近的检查点暂停，之后可继续">暂停</button>

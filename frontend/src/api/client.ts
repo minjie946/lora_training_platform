@@ -40,6 +40,25 @@ export interface ImageItem {
   thumbnail_url: string
   image_url: string
   tag_scores?: TagScore[] | null
+  quality?: ImageQuality | null
+}
+
+export interface QualityIssue {
+  code: string
+  label: string
+  severity: string // "warn" | "bad"
+}
+
+export interface ImageQuality {
+  level: string // "ok" | "warn" | "bad"
+  issues: QualityIssue[]
+}
+
+export interface QualityCheckResult {
+  total: number
+  ok: number
+  warn: number
+  bad: number
 }
 
 export interface PreflightItem {
@@ -81,6 +100,7 @@ export interface Job {
   latest_loss: number | null
   error: string | null
   created_at: string
+  queued_at?: string | null
   finished_at: string | null
   has_checkpoint?: boolean
 }
@@ -233,6 +253,13 @@ export const api = {
   },
   deleteImage: (id: number, filename: string) =>
     http(`/api/datasets/${id}/images/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
+  bulkDeleteImages: (id: number, filenames: string[]) =>
+    http<{ ok: boolean; deleted: number }>(`/api/datasets/${id}/images/bulk-delete`, {
+      method: 'POST',
+      body: JSON.stringify({ filenames }),
+    }),
+  checkQuality: (id: number) =>
+    http<QualityCheckResult>(`/api/datasets/${id}/quality-check`, { method: 'POST' }),
   updateCaption: (id: number, filename: string, caption: string) =>
     http(`/api/datasets/${id}/captions`, {
       method: 'PUT',
@@ -265,6 +292,7 @@ export const api = {
   updateJob: (id: number, body: any) =>
     http<Job>(`/api/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   startJob: (id: number) => http<Job>(`/api/jobs/${id}/start`, { method: 'POST' }),
+  dequeueJob: (id: number) => http<Job>(`/api/jobs/${id}/dequeue`, { method: 'POST' }),
   stopJob: (id: number) => http<Job>(`/api/jobs/${id}/stop`, { method: 'POST' }),
   pauseJob: (id: number) => http<Job>(`/api/jobs/${id}/pause`, { method: 'POST' }),
   resumeJob: (id: number) => http<Job>(`/api/jobs/${id}/resume`, { method: 'POST' }),

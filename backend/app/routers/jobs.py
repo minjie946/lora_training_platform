@@ -32,6 +32,7 @@ def _to_read(job: TrainingJob) -> JobRead:
         latest_loss=job.latest_loss,
         error=job.error,
         created_at=job.created_at,
+        queued_at=job.queued_at,
         finished_at=job.finished_at,
         has_checkpoint=job_manager.has_checkpoint(job.id),
     )
@@ -160,6 +161,8 @@ def start_job(job_id: int, session: Session = Depends(session_dependency)):
         raise HTTPException(404, "任务不存在")
     if job.status == "running":
         raise HTTPException(400, "任务已在运行")
+    if job.status == "queued":
+        raise HTTPException(400, "任务已在队列中")
 
     backend = get_backend(job.backend)
     pf = backend.preflight()
@@ -167,9 +170,22 @@ def start_job(job_id: int, session: Session = Depends(session_dependency)):
         raise HTTPException(400, f"环境检查未通过: {pf.detail}")
 
     try:
-        job_manager.start_job(job_id)
+        # If another job is already running, this is placed in the queue and
+        # will start automatically when the device frees up.
+        job_manager.start_or_queue(job_id)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, f"启动失败: {e}")
+    session.refresh(job)
+    return _to_read(job)
+
+
+@router.post("/{job_id}/dequeue", response_model=JobRead)
+def dequeue_job(job_id: int, session: Session = Depends(session_dependency)):
+    job = session.get(TrainingJob, job_id)
+    if not job:
+        raise HTTPException(404, "任务不存在")
+    if not job_manager.dequeue_job(job_id):
+        raise HTTPException(400, "任务不在队列中")
     session.refresh(job)
     return _to_read(job)
 

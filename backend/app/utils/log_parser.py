@@ -11,6 +11,12 @@ _STEP_RE = re.compile(r"(\d+)\s*/\s*(\d+)\s*\[")
 _EPOCH_RE = re.compile(r"epoch[:\s]+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
 # "loss=0.0834" or "avr_loss=0.0834" or "loss: 0.0834"
 _LOSS_RE = re.compile(r"(?:avr_)?loss[=:\s]+([0-9]*\.?[0-9]+)", re.IGNORECASE)
+# sd-scripts prints this only when resuming from a saved checkpoint. It marks
+# that the following "'current_step': N" (from the loaded train_state.json) is
+# the baseline step already completed, so the resumed run's tqdm bar — which
+# counts only the REMAINING steps from 0 — must be offset by it.
+_RESUME_MARKER_RE = re.compile(r"resume training from local state", re.IGNORECASE)
+_STATE_STEP_RE = re.compile(r"'current_step':\s*(\d+)")
 
 
 @dataclass
@@ -20,6 +26,8 @@ class ProgressUpdate:
     epoch: Optional[int] = None
     total_epoch: Optional[int] = None
     loss: Optional[float] = None
+    resume_marker: bool = False
+    state_step: Optional[int] = None
 
     def is_empty(self) -> bool:
         return all(
@@ -30,8 +38,9 @@ class ProgressUpdate:
                 self.epoch,
                 self.total_epoch,
                 self.loss,
+                self.state_step,
             )
-        )
+        ) and not self.resume_marker
 
 
 def parse_line(line: str) -> ProgressUpdate:
@@ -59,5 +68,13 @@ def parse_line(line: str) -> ProgressUpdate:
             upd.loss = float(m.group(1))
         except ValueError:
             pass
+
+    # Resume bookkeeping: the marker line and the train_state.json dump that
+    # follows it tell us how many steps were already done before this run.
+    if _RESUME_MARKER_RE.search(line):
+        upd.resume_marker = True
+    m = _STATE_STEP_RE.search(line)
+    if m:
+        upd.state_step = int(m.group(1))
 
     return upd
