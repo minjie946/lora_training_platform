@@ -178,6 +178,83 @@ export interface VoiceModel {
   created_at: string
 }
 
+// ---- Image tools (微博图片管理) ----
+export interface ImageTask {
+  id: number
+  kind: string // "pull" | "filter"
+  target: string
+  out_dir: string
+  params: Record<string, any>
+  status: string // running | paused | done | failed | stopped
+  detail: string
+  created_at: string
+  finished_at: string | null
+  // Download progress for pull tasks (0..1 fraction + raw counts).
+  progress: number
+  done: number
+  total: number
+}
+
+export interface ImageDirEntry {
+  name: string
+  image_count: number
+  categories: Record<string, number>
+}
+
+export interface ImageCookie {
+  present: boolean
+  length: number
+  preview: string
+  updated_at: string | null
+  looks_valid: boolean
+}
+
+export interface ImagePreviewItem {
+  pid: string
+  thumb_url: string
+  full_url: string
+}
+
+export interface ImagePreviewResult {
+  out_dir_name: string
+  uid: string
+  album_id: string | null
+  pids: ImagePreviewItem[]
+}
+
+export interface ImagePullOpts {
+  uid?: string
+  album?: string
+  workers?: number
+  start?: number
+  end?: number | null
+}
+
+export interface ImageFilterOpts {
+  directory: string
+  recursive?: boolean
+  dry_run?: boolean
+  min_face?: number
+  text_blocks?: number
+  text_area?: number
+  no_text_filter?: boolean
+  no_animal_filter?: boolean
+  no_quality_filter?: boolean
+}
+
+export interface ImageSettings {
+  out_dir: string
+  default_out_dir: string
+  is_default: boolean
+  exists: boolean
+}
+
+export interface ImageBrowseResult {
+  path: string
+  parent: string | null
+  dirs: string[]
+}
+
 async function http<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -225,6 +302,12 @@ export const api = {
   deleteDataset: (id: number) =>
     http<{ ok: boolean }>(`/api/datasets/${id}`, { method: 'DELETE' }),
   listImages: (id: number) => http<ImageItem[]>(`/api/datasets/${id}/images`),
+  importSources: () =>
+    http<{ name: string; source_dir: string; image_count: number }[]>('/api/datasets/import-sources/list'),
+  importFromDir: (id: number, source_dir: string) =>
+    http<ImageItem[]>(`/api/datasets/${id}/import-from-dir`, {
+      method: 'POST', body: JSON.stringify({ source_dir }),
+    }),
   uploadImages: async (id: number, files: FileList, onProgress?: (pct: number) => void) => {
     const fd = new FormData()
     Array.from(files).forEach((f) => fd.append('files', f))
@@ -362,4 +445,53 @@ export const api = {
     http<VoiceModel[]>(`/api/voice/models${jobId ? `?job_id=${jobId}` : ''}`),
   deleteVoiceModel: (id: number) => http(`/api/voice/models/${id}`, { method: 'DELETE' }),
   voiceModelDownloadUrl: (id: number) => `/api/voice/models/${id}/download`,
+
+  // image tools (微博图片管理)
+  imageConfig: () => http<{ cookie_present: boolean; cookie_path: string; out_dir: string }>('/api/images/config'),
+  imageSettings: () => http<ImageSettings>('/api/images/settings'),
+  setImageSettings: (out_dir: string | null) =>
+    http<ImageSettings>('/api/images/settings', { method: 'PUT', body: JSON.stringify({ out_dir }) }),
+  browseImageDir: (path = '') =>
+    http<ImageBrowseResult>(`/api/images/browse?path=${encodeURIComponent(path)}`),
+  pickImageDir: (initial = '') =>
+    http<{ path: string | null }>(`/api/images/pick-dir?initial=${encodeURIComponent(initial)}`, { method: 'POST' }),
+  imageCookie: (platform: 'weibo' | 'xhs' = 'weibo') =>
+    http<ImageCookie>(`/api/images/cookie?platform=${platform}`),
+  imageCookieRaw: (platform: 'weibo' | 'xhs' = 'weibo') =>
+    http<{ cookie: string }>(`/api/images/cookie/raw?platform=${platform}`),
+  setImageCookie: (cookie: string, platform: 'weibo' | 'xhs' = 'weibo') =>
+    http<ImageCookie>(`/api/images/cookie?platform=${platform}`, { method: 'PUT', body: JSON.stringify({ cookie }) }),
+  previewImages: (opts: { uid?: string; album?: string; start?: number; end?: number | null }) =>
+    http<ImagePreviewResult>('/api/images/preview', { method: 'POST', body: JSON.stringify(opts) }),
+  // Live log of the in-flight (synchronous) preview fetch, polled while waiting.
+  previewLog: (platform: 'weibo' | 'xhs' = 'weibo', tail = 400) =>
+    http<{ log: string }>(`/api/images/preview-log?platform=${platform}&tail=${tail}`),
+  pullSelected: (opts: { pids: string[]; out_dir_name: string; workers?: number }) =>
+    http<ImageTask>('/api/images/pull-selected', { method: 'POST', body: JSON.stringify(opts) }),
+  // 小红书（XHS）博主主页全量
+  xhsPreview: (opts: { user: string; max_notes?: number | null; headed?: boolean }) =>
+    http<ImagePreviewResult>('/api/images/xhs/preview', { method: 'POST', body: JSON.stringify(opts) }),
+  xhsPull: (opts: { user: string; workers?: number; max_notes?: number | null; headed?: boolean }) =>
+    http<ImageTask>('/api/images/xhs/pull', { method: 'POST', body: JSON.stringify(opts) }),
+  xhsPullSelected: (opts: { ids: string[]; user: string; out_dir_name: string; workers?: number }) =>
+    http<ImageTask>('/api/images/xhs/pull-selected', { method: 'POST', body: JSON.stringify(opts) }),
+  imageProxyUrl: (url: string) => `/api/images/proxy?url=${encodeURIComponent(url)}`,
+  imageDirs: () => http<ImageDirEntry[]>('/api/images/dirs'),
+  imageTasks: (kind?: 'pull' | 'filter') =>
+    http<ImageTask[]>(`/api/images/tasks${kind ? `?kind=${kind}` : ''}`),
+  imageTask: (id: number) => http<ImageTask>(`/api/images/tasks/${id}`),
+  imageTaskLog: (id: number, tail = 400) =>
+    http<{ log: string }>(`/api/images/tasks/${id}/log?tail=${tail}`),
+  stopImageTask: (id: number) =>
+    http<{ ok: boolean }>(`/api/images/tasks/${id}/stop`, { method: 'POST' }),
+  pauseImageTask: (id: number) =>
+    http<ImageTask>(`/api/images/tasks/${id}/pause`, { method: 'POST' }),
+  resumeImageTask: (id: number) =>
+    http<ImageTask>(`/api/images/tasks/${id}/resume`, { method: 'POST' }),
+  discardImageTask: (id: number) =>
+    http<{ ok: boolean }>(`/api/images/tasks/${id}/discard`, { method: 'POST' }),
+  pullImages: (opts: ImagePullOpts) =>
+    http<ImageTask>('/api/images/pull', { method: 'POST', body: JSON.stringify(opts) }),
+  filterImages: (opts: ImageFilterOpts) =>
+    http<ImageTask>('/api/images/filter', { method: 'POST', body: JSON.stringify(opts) }),
 }

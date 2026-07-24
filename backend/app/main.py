@@ -7,8 +7,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .db import init_db
-from .routers import datasets, jobs, models, remotes, system, voice
+from .routers import datasets, images, jobs, models, remotes, system, voice
 from .services.caption_manager import reconcile_on_startup as reconcile_captions_on_startup
+from .services.image_manager import reconcile_on_startup as reconcile_images_on_startup
 from .services.job_manager import reconcile_on_startup
 from .services.voice_job_manager import reconcile_on_startup as reconcile_voice_on_startup
 
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
     reconcile_on_startup()
     reconcile_voice_on_startup()
     reconcile_captions_on_startup()
+    reconcile_images_on_startup()
     yield
 
 
@@ -39,6 +41,7 @@ app.include_router(jobs.router)
 app.include_router(models.router)
 app.include_router(remotes.router)
 app.include_router(voice.router)
+app.include_router(images.router)
 
 
 @app.get("/api/health")

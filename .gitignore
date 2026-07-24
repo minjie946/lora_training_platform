@@ -15,3 +15,6 @@ frontend/dist/
 
 # OS
 .DS_Store
+
+# Third-party signing helper for the xhs downloader (auto-downloaded, not vendored)
+backend/app/image_tools/stealth.min.js

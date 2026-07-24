@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, BaseModel, Dataset } from '../../api/client'
 import Select from '../../components/Select/Select'
+import PageHeader from '../../components/PageHeader/PageHeader'
 import './NewTraining.css'
 
 // 各训练参数的作用说明，hover label 上的 ⓘ 显示
@@ -120,136 +121,138 @@ export default function NewTraining() {
   )
 
   return (
-    <div>
-      <div className="toolbar">
-        <h1 className="page-title">{isEdit ? '编辑训练任务' : '新建训练'}</h1>
-        <span className="spacer" />
-        <Link className="btn ghost sm" to={isEdit ? `/jobs/${editId}` : '/jobs'}>返回</Link>
-      </div>
-      <p className="page-sub">
-        {isEdit
-          ? '修改任务配置后保存；若改动了训练参数，任务会重置为待启动，并自动清理该任务此前的日志、检查点与产出模型。'
-          : '默认参数对齐 Mac M4 Pro 指南；底模默认跟随所选数据集，可在下方覆盖。鼠标悬停参数旁的 ⓘ 查看说明。'}
-      </p>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="row">
-          <div className="field">
-            <label>任务名称</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)}
-              placeholder="如：小樱-第一轮" />
-          </div>
-          <div className="field">
-            <label>数据集</label>
-            <Select
-              value={datasetId ?? ''}
-              onChange={(v) => { const id = Number(v); setDatasetId(id); followBase(id) }}
-              placeholder="选择数据集"
-              options={datasets.map((d) => ({ value: d.id, label: `${d.name}（${d.image_count} 张）` }))}
-            />
-          </div>
-          <div className="field">
-            <label>训练后端</label>
-            <Select
-              value={backend}
-              onChange={(v) => setBackend(String(v))}
-              options={backends.map((b) => ({ value: b.name, label: b.label }))}
-            />
-          </div>
-        </div>
-        <div className="row">
-          <div className="field">
-            <label>底模 (base model) <span className="help-icon tip" tabIndex={0} data-tip="LoRA 训练所基于的大模型。默认跟随数据集设定，可在此覆盖。SDXL/SD1.5 会自动选择对应训练脚本。">ⓘ</span></label>
-            <Select
-              value={baseModel}
-              onChange={(v) => setBaseModel(String(v))}
-              placeholder="跟随数据集 / 选择底模"
-              options={baseModels.map((m) => ({
-                value: m.filename,
-                label: `${m.label}（${m.is_sdxl ? 'SDXL' : 'SD1.5'} · ${m.style === 'realistic' ? '写实' : '动漫'}）`,
-              }))}
-            />
-            {selected && selected.base_model && baseModel === selected.base_model && (
-              <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>默认使用该数据集设定的底模</p>
-            )}
-          </div>
-          <div className="field">
-            <label>资源占用 {helpIcon('resource_tier')}</label>
-            <Select
-              value={resourceTier}
-              onChange={(v) => setResourceTier(String(v))}
-              options={[
-                { value: 'low', label: '低占用（电脑更流畅）' },
-                { value: 'balanced', label: '均衡（默认）' },
-                { value: 'full', label: '全速（训练最快）' },
-              ]}
-            />
-            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-              {resourceTier === 'low' && '限制显存约 50% + 单线程，训练变慢但可边训边用机器'}
-              {resourceTier === 'balanced' && '显存上限约 80%，兼顾速度与可用性'}
-              {resourceTier === 'full' && '不限显存、放开线程，机器会明显吃紧'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <strong>训练参数</strong>
-        <div className="row" style={{ marginTop: 12 }}>
-          <div className="field">
-            <label>分辨率 (48G→1024 / 24G→768) {helpIcon('resolution')}</label>
-            <Select
-              value={params.resolution ?? 768}
-              onChange={(v) => setP('resolution', Number(v))}
-              options={[{ value: 768, label: '768' }, { value: 1024, label: '1024' }]}
-            />
-          </div>
-          {numField('network_dim', 'Rank (network_dim)')}
-          {numField('network_alpha', 'Alpha (network_alpha)')}
-        </div>
-        <div className="row">
-          {numField('max_train_epochs', '训练轮数 (epochs)')}
-          {numField('train_batch_size', 'Batch Size')}
-          {numField('save_every_n_epochs', '每 N 轮保存')}
-        </div>
-        <div className="row">
-          {numField('unet_lr', 'UNet 学习率')}
-          {numField('text_encoder_lr', 'TextEncoder 学习率')}
-          {numField('seed', '随机种子')}
-        </div>
-        <div className="row">
-          <div className="field">
-            <label>优化器 {helpIcon('optimizer_type')}</label>
-            <input className="input" value={params.optimizer_type ?? 'AdamW'} disabled />
-          </div>
-          <div className="field">
-            <label>学习率调度 {helpIcon('lr_scheduler')}</label>
-            <Select
-              value={params.lr_scheduler ?? 'cosine_with_restarts'}
-              onChange={(v) => setP('lr_scheduler', String(v))}
-              options={[
-                { value: 'cosine_with_restarts', label: 'cosine_with_restarts' },
-                { value: 'cosine', label: 'cosine' },
-              ]}
-            />
-          </div>
-          <div className="field">
-            <label>混合精度 {helpIcon('mixed_precision')}</label>
-            <input className="input" value={params.mixed_precision ?? ''} disabled />
-          </div>
-        </div>
-        <p className="muted">
-          预计总步数：<strong style={{ color: 'var(--accent-2)' }}>{totalSteps}</strong>
-          {'  '}（图片 × repeat × epochs ÷ batch；建议 1200–2000 步，避免过拟合）
+    <div className="page">
+      <PageHeader
+        title={isEdit ? '编辑训练任务' : '新建训练'}
+        subtitle={isEdit ? '修改配置后保存' : '配置并启动一次 LoRA 训练'}
+        actions={<Link className="btn ghost sm" to={isEdit ? `/jobs/${editId}` : '/jobs'}>返回</Link>}
+      />
+      <div className="page-body">
+        <p className="page-sub">
+          {isEdit
+            ? '修改任务配置后保存；若改动了训练参数，任务会重置为待启动，并自动清理该任务此前的日志、检查点与产出模型。'
+            : '默认参数对齐 Mac M4 Pro 指南；底模默认跟随所选数据集，可在下方覆盖。鼠标悬停参数旁的 ⓘ 查看说明。'}
         </p>
-      </div>
 
-      {err && <p className="badge red">{err}</p>}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button className="btn" onClick={submit}>{isEdit ? '保存修改' : '创建任务'}</button>
-        {isEdit && (
-          <button className="btn ghost" onClick={() => nav(`/jobs/${editId}`)}>取消</button>
-        )}
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="row">
+            <div className="field">
+              <label>任务名称</label>
+              <input className="input" value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="如：小樱-第一轮" />
+            </div>
+            <div className="field">
+              <label>数据集</label>
+              <Select
+                value={datasetId ?? ''}
+                onChange={(v) => { const id = Number(v); setDatasetId(id); followBase(id) }}
+                placeholder="选择数据集"
+                options={datasets.map((d) => ({ value: d.id, label: `${d.name}（${d.image_count} 张）` }))}
+              />
+            </div>
+            <div className="field">
+              <label>训练后端</label>
+              <Select
+                value={backend}
+                onChange={(v) => setBackend(String(v))}
+                options={backends.map((b) => ({ value: b.name, label: b.label }))}
+              />
+            </div>
+          </div>
+          <div className="row">
+            <div className="field">
+              <label>底模 (base model) <span className="help-icon tip" tabIndex={0} data-tip="LoRA 训练所基于的大模型。默认跟随数据集设定，可在此覆盖。SDXL/SD1.5 会自动选择对应训练脚本。">ⓘ</span></label>
+              <Select
+                value={baseModel}
+                onChange={(v) => setBaseModel(String(v))}
+                placeholder="跟随数据集 / 选择底模"
+                options={baseModels.map((m) => ({
+                  value: m.filename,
+                  label: `${m.label}（${m.is_sdxl ? 'SDXL' : 'SD1.5'} · ${m.style === 'realistic' ? '写实' : '动漫'}）`,
+                }))}
+              />
+              {selected && selected.base_model && baseModel === selected.base_model && (
+                <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>默认使用该数据集设定的底模</p>
+              )}
+            </div>
+            <div className="field">
+              <label>资源占用 {helpIcon('resource_tier')}</label>
+              <Select
+                value={resourceTier}
+                onChange={(v) => setResourceTier(String(v))}
+                options={[
+                  { value: 'low', label: '低占用（电脑更流畅）' },
+                  { value: 'balanced', label: '均衡（默认）' },
+                  { value: 'full', label: '全速（训练最快）' },
+                ]}
+              />
+              <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                {resourceTier === 'low' && '限制显存约 50% + 单线程，训练变慢但可边训边用机器'}
+                {resourceTier === 'balanced' && '显存上限约 80%，兼顾速度与可用性'}
+                {resourceTier === 'full' && '不限显存、放开线程，机器会明显吃紧'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 20 }}>
+          <strong>训练参数</strong>
+          <div className="row" style={{ marginTop: 12 }}>
+            <div className="field">
+              <label>分辨率 (48G→1024 / 24G→768) {helpIcon('resolution')}</label>
+              <Select
+                value={params.resolution ?? 768}
+                onChange={(v) => setP('resolution', Number(v))}
+                options={[{ value: 768, label: '768' }, { value: 1024, label: '1024' }]}
+              />
+            </div>
+            {numField('network_dim', 'Rank (network_dim)')}
+            {numField('network_alpha', 'Alpha (network_alpha)')}
+          </div>
+          <div className="row">
+            {numField('max_train_epochs', '训练轮数 (epochs)')}
+            {numField('train_batch_size', 'Batch Size')}
+            {numField('save_every_n_epochs', '每 N 轮保存')}
+          </div>
+          <div className="row">
+            {numField('unet_lr', 'UNet 学习率')}
+            {numField('text_encoder_lr', 'TextEncoder 学习率')}
+            {numField('seed', '随机种子')}
+          </div>
+          <div className="row">
+            <div className="field">
+              <label>优化器 {helpIcon('optimizer_type')}</label>
+              <input className="input" value={params.optimizer_type ?? 'AdamW'} disabled />
+            </div>
+            <div className="field">
+              <label>学习率调度 {helpIcon('lr_scheduler')}</label>
+              <Select
+                value={params.lr_scheduler ?? 'cosine_with_restarts'}
+                onChange={(v) => setP('lr_scheduler', String(v))}
+                options={[
+                  { value: 'cosine_with_restarts', label: 'cosine_with_restarts' },
+                  { value: 'cosine', label: 'cosine' },
+                ]}
+              />
+            </div>
+            <div className="field">
+              <label>混合精度 {helpIcon('mixed_precision')}</label>
+              <input className="input" value={params.mixed_precision ?? ''} disabled />
+            </div>
+          </div>
+          <p className="muted">
+            预计总步数：<strong style={{ color: 'var(--accent-2)' }}>{totalSteps}</strong>
+            {'  '}（图片 × repeat × epochs ÷ batch；建议 1200–2000 步，避免过拟合）
+          </p>
+        </div>
+
+        {err && <p className="badge red">{err}</p>}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn" onClick={submit}>{isEdit ? '保存修改' : '创建任务'}</button>
+          {isEdit && (
+            <button className="btn ghost" onClick={() => nav(`/jobs/${editId}`)}>取消</button>
+          )}
+        </div>
       </div>
     </div>
   )

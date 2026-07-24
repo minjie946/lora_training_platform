@@ -53,6 +53,27 @@ class LoraModel(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ImageTask(SQLModel, table=True):
+    """A background image-tools run: weibo album download OR single-person filter.
+
+    Mirrors the caption/training lifecycle so the UI can restore progress after a
+    reload and reconcile a run interrupted by a backend restart.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str  # "pull" | "filter"
+    # Human-readable target: the uid/album for a pull, or the directory for a filter.
+    target: str = ""
+    # Directory this task produced/operated on (relative to the image-tools out dir).
+    out_dir: str = ""
+    params: str = "{}"  # JSON-encoded launch options
+    status: str = "running"  # running | done | failed | stopped
+    detail: str = ""  # last status line / error message
+    pid: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
+
+
 class RemoteHost(SQLModel, table=True):
     """A cloud / remote CUDA host reachable over SSH for off-box training."""
 

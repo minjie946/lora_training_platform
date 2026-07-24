@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, Job, LoraModel, ResourceStats } from '../../api/client'
 import { statusBadge, jobStepText, formatBytes, inferPhase } from '../../components/helpers'
+import PageHeader from '../../components/PageHeader/PageHeader'
 import './JobDetail.css'
 
 function LossChart({ data }: { data: number[] }) {
@@ -104,90 +105,94 @@ export default function JobDetail() {
   const phase = inferPhase(job.status, log)
 
   return (
-    <div>
-      <div className="toolbar">
-        <h1 className="page-title">{job.name}</h1>
-        <span className={b.cls}>{b.text}</span>
-        <span className="spacer" />
-        <Link className="btn ghost sm" to="/jobs">返回</Link>
-        {job.status !== 'running' && job.status !== 'paused' && job.status !== 'queued' && (
-          <Link className="btn sm ghost" to={`/jobs/${jobId}/edit`}>编辑</Link>
-        )}
-        {job.status !== 'running' && job.status !== 'paused' && job.status !== 'queued' && <button className="btn sm" onClick={start}>启动训练</button>}
-        {job.status === 'queued' && <button className="btn sm ghost" onClick={dequeue}>取消排队</button>}
-        {job.status === 'paused' && <button className="btn sm" onClick={resume}>继续训练</button>}
-        {job.status === 'running' && job.has_checkpoint && (
-          <button className="btn sm ghost" onClick={pause} title="从最近的检查点暂停，之后可继续">暂停</button>
-        )}
-        {job.status === 'running' && !job.has_checkpoint && (
-          <span className="muted" style={{ fontSize: 12 }} title="尚未生成检查点，暂停后无法续训，只能停止后从头再来">
-            暂不可暂停（等首个检查点）
-          </span>
-        )}
-        {job.status === 'running' && <button className="btn sm danger" onClick={stop}>停止</button>}
-        <button className="btn sm ghost" onClick={clone}>克隆重训</button>
-        <button className="btn sm danger" onClick={remove}>删除</button>
-      </div>
+    <div className="page">
+      <PageHeader
+        title={<>{job.name}<span className={b.cls}>{b.text}</span></>}
+        actions={
+          <>
+            <Link className="btn ghost sm" to="/jobs">返回</Link>
+            {job.status !== 'running' && job.status !== 'paused' && job.status !== 'queued' && (
+              <Link className="btn sm ghost" to={`/jobs/${jobId}/edit`}>编辑</Link>
+            )}
+            {job.status !== 'running' && job.status !== 'paused' && job.status !== 'queued' && <button className="btn sm" onClick={start}>启动训练</button>}
+            {job.status === 'queued' && <button className="btn sm ghost" onClick={dequeue}>取消排队</button>}
+            {job.status === 'paused' && <button className="btn sm" onClick={resume}>继续训练</button>}
+            {job.status === 'running' && job.has_checkpoint && (
+              <button className="btn sm ghost" onClick={pause} title="从最近的检查点暂停，之后可继续">暂停</button>
+            )}
+            {job.status === 'running' && !job.has_checkpoint && (
+              <span className="muted" style={{ fontSize: 12 }} title="尚未生成检查点，暂停后无法续训，只能停止后从头再来">
+                暂不可暂停（等首个检查点）
+              </span>
+            )}
+            {job.status === 'running' && <button className="btn sm danger" onClick={stop}>停止</button>}
+            <button className="btn sm ghost" onClick={clone}>克隆重训</button>
+            <button className="btn sm danger" onClick={remove}>删除</button>
+          </>
+        }
+      />
+      <div className="page-body">
 
-      {err && <p className="badge red">{err}</p>}
-      {job.error && <p className="badge red">错误：{job.error}</p>}
+        {err && <p className="badge red">{err}</p>}
+        {job.error && <p className="badge red">错误：{job.error}</p>}
 
-      <div className="card overview-card" style={{ marginBottom: 20 }}>
-        {/* 阶段提示：让用户清楚“现在在干嘛”，区分准备/缓存/训练 */}
-        <div className="phase-row">
-          <span className={`phase-pill phase-${phase.key}`}>{phase.label}</span>
-          <span className="muted phase-hint">{phase.hint}</span>
-        </div>
-
-        {/* 训练进度（仅统计真正的训练步，不含缓存预处理） */}
-        <div className="progress" style={{ margin: '12px 0 6px' }}>
-          <div className="bar" style={{ width: `${job.progress * 100}%` }} />
-        </div>
-        <div className="overview-metrics">
-          <span><b>{(job.progress * 100).toFixed(1)}%</b> 训练进度</span>
-          <span><b>{jobStepText(job)}</b></span>
-          <span>最新 Loss <b>{job.latest_loss != null ? job.latest_loss.toFixed(4) : '—'}</b></span>
-          <span className="muted">底模 {job.base_model ? job.base_model.replace(/\.safetensors$/, '') : '默认'}</span>
-          <span className="muted">后端 {job.backend}</span>
-        </div>
-
-        {/* 资源占用：紧凑内联迷你条 */}
-        <ResourceMonitor active={job.status === 'running'} />
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="toolbar" style={{ marginBottom: 0 }}>
-          <strong>Loss 曲线</strong>
-          <span className="muted" style={{ fontSize: 12 }}>
-            Loss 衡量模型预测与训练图的差距，越低越拟合；理想是整体震荡下降后趋于平稳
-          </span>
-        </div>
-        <div style={{ marginTop: 10 }}><LossChart data={losses} /></div>
-      </div>
-
-      <LogPanel log={log} jobName={job.name} logRef={logRef} />
-
-      <div>
-        <strong style={{ display: 'block', marginBottom: 12 }}>产出模型</strong>
-        {models.length === 0 ? (
-          <div className="card"><div className="empty">训练成功后会在此列出各 epoch 的 LoRA 权重。</div></div>
-        ) : (
-          <div className="table-card">
-            <table>
-              <thead><tr><th>文件</th><th>Epoch</th><th>大小</th><th></th></tr></thead>
-              <tbody>
-                {models.map((m) => (
-                  <tr key={m.id}>
-                    <td>{m.name}</td>
-                    <td>{m.epoch}</td>
-                    <td>{formatBytes(m.file_size)}</td>
-                    <td><a className="btn sm" href={api.modelDownloadUrl(m.id)}>下载</a></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="card overview-card" style={{ marginBottom: 20 }}>
+          {/* 阶段提示：让用户清楚“现在在干嘛”，区分准备/缓存/训练 */}
+          <div className="phase-row">
+            <span className={`phase-pill phase-${phase.key}`}>{phase.label}</span>
+            <span className="muted phase-hint">{phase.hint}</span>
           </div>
-        )}
+
+          {/* 训练进度（仅统计真正的训练步，不含缓存预处理） */}
+          <div className="progress" style={{ margin: '12px 0 6px' }}>
+            <div className="bar" style={{ width: `${job.progress * 100}%` }} />
+          </div>
+          <div className="overview-metrics">
+            <span><b>{(job.progress * 100).toFixed(1)}%</b> 训练进度</span>
+            <span><b>{jobStepText(job)}</b></span>
+            <span>最新 Loss <b>{job.latest_loss != null ? job.latest_loss.toFixed(4) : '—'}</b></span>
+            <span className="muted">底模 {job.base_model ? job.base_model.replace(/\.safetensors$/, '') : '默认'}</span>
+            <span className="muted">后端 {job.backend}</span>
+          </div>
+
+          {/* 资源占用：紧凑内联迷你条 */}
+          <ResourceMonitor active={job.status === 'running'} />
+        </div>
+
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="toolbar" style={{ marginBottom: 0 }}>
+            <strong>Loss 曲线</strong>
+            <span className="muted" style={{ fontSize: 12 }}>
+              Loss 衡量模型预测与训练图的差距，越低越拟合；理想是整体震荡下降后趋于平稳
+            </span>
+          </div>
+          <div style={{ marginTop: 10 }}><LossChart data={losses} /></div>
+        </div>
+
+        <LogPanel log={log} jobName={job.name} logRef={logRef} />
+
+        <div>
+          <strong style={{ display: 'block', marginBottom: 12 }}>产出模型</strong>
+          {models.length === 0 ? (
+            <div className="card"><div className="empty">训练成功后会在此列出各 epoch 的 LoRA 权重。</div></div>
+          ) : (
+            <div className="table-card">
+              <table>
+                <thead><tr><th>文件</th><th>Epoch</th><th>大小</th><th></th></tr></thead>
+                <tbody>
+                  {models.map((m) => (
+                    <tr key={m.id}>
+                      <td>{m.name}</td>
+                      <td>{m.epoch}</td>
+                      <td>{formatBytes(m.file_size)}</td>
+                      <td><a className="btn sm" href={api.modelDownloadUrl(m.id)}>下载</a></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

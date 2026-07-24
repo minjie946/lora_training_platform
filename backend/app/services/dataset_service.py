@@ -232,6 +232,39 @@ def import_labeled_zip(
     return {"imported": imported, "captioned": captioned}
 
 
+def import_from_dir(
+    dataset_id: int, repeat: int, concept: str, source_dir: Path
+) -> dict[str, int]:
+    """Import images from a filesystem directory (e.g. a filter's single/ dir).
+
+    Copies every image in ``source_dir`` into the dataset via ``_save_image_file``
+    (so thumbnails / captions / de-dup / format checks are handled). A sibling
+    ``.txt`` with the same stem is used as the caption if present. Non-recursive.
+    """
+    if not source_dir.is_dir():
+        raise ValueError(f"来源目录不存在：{source_dir}")
+    img_dir = ensure_image_dir(dataset_id, repeat, concept)
+    imported = 0
+    captioned = 0
+    for p in sorted(source_dir.iterdir()):
+        if not p.is_file():
+            continue
+        ext = p.suffix.lower()
+        if ext not in ALLOWED_IMAGE_EXTS and ext not in _HEIC_EXTS:
+            continue
+        caption = ""
+        caption_file = p.with_suffix(".txt")
+        if caption_file.exists():
+            caption = caption_file.read_text(encoding="utf-8-sig", errors="replace").strip()
+        saved = _save_image_file(img_dir, p.name, p.read_bytes(), caption=caption)
+        imported += 1
+        if read_caption(dataset_id, saved).strip():
+            captioned += 1
+    if imported == 0:
+        raise ValueError("来源目录下没有可导入的图片")
+    return {"imported": imported, "captioned": captioned}
+
+
 def get_image_path(dataset_id: int, filename: str) -> Path | None:
     img_dir = find_image_dir(dataset_id)
     if not img_dir:

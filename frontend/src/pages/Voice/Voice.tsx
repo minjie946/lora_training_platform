@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { api, AudioClip, VoiceDataset, VoiceJob, VoiceModel } from '../../api/client'
 import { statusBadge, formatBytes } from '../../components/helpers'
 import Select from '../../components/Select/Select'
+import PageHeader from '../../components/PageHeader/PageHeader'
 import './Voice.css'
 
 const SR_OPTIONS = [
@@ -51,11 +52,11 @@ export default function Voice() {
 
   return (
     <div className="voice-page">
-      <div className="toolbar">
-        <h1 className="page-title">声音克隆 / SVC</h1>
-        <span className="spacer" />
-        <button className="btn" onClick={() => { setErr(''); setCreating(true) }}>+ 新建声音数据集</button>
-      </div>
+      <PageHeader
+        title="声音克隆 / SVC"
+        subtitle="RVC 声音数据集与转换模型训练"
+        actions={<button className="btn" onClick={() => { setErr(''); setCreating(true) }}>+ 新建声音数据集</button>}
+      />
 
       <div className="voice-split">
         {/* 左：数据集列表 */}

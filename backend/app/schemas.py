@@ -284,3 +284,149 @@ class VoiceModelRead(BaseModel):
     has_index: bool
     file_size: int
     created_at: datetime
+
+
+# ---- Image tools (微博图片管理) ----
+class ImagePullRequest(BaseModel):
+    """Launch a weibo album download. Exactly one of uid/album must be set."""
+
+    uid: str = ""
+    album: str = ""  # photo.weibo.com album URL
+    workers: int = 6
+    start: int = 1  # 1-based inclusive
+    end: Optional[int] = None  # inclusive; None = to the end
+
+
+class ImageFilterRequest(BaseModel):
+    """Run the single-person filter over a downloaded directory (relative to
+    the image-tools output dir)."""
+
+    directory: str  # e.g. "uid_1234567890"
+    recursive: bool = False
+    dry_run: bool = False
+    min_face: float = 0.5  # min face area %
+    text_blocks: int = 5
+    text_area: float = 5.0
+    no_text_filter: bool = False
+    no_animal_filter: bool = False
+    no_quality_filter: bool = False  # 关闭 LoRA 训练质量筛选(不细分 single_lowq/)
+
+
+class ImageTaskRead(BaseModel):
+    id: int
+    kind: str  # "pull" | "filter"
+    target: str
+    out_dir: str
+    params: dict[str, Any]
+    status: str
+    detail: str
+    created_at: datetime
+    finished_at: Optional[datetime]
+    # Download progress (pull tasks): 0..1 fraction plus raw counts, parsed from
+    # the downloader's log. 0 when no download has started.
+    progress: float = 0.0
+    done: int = 0
+    total: int = 0
+
+
+class ImageDirEntry(BaseModel):
+    """A downloaded/filtered directory available for browsing or filtering."""
+
+    name: str  # directory name under the image-tools out dir
+    image_count: int
+    # Per-category counts produced by the filter (single/multi/poster/...).
+    categories: dict[str, int] = {}
+
+
+class ImageCookieRead(BaseModel):
+    present: bool
+    length: int = 0
+    # A masked preview (head/tail only) so the UI can show it without leaking
+    # the full credential.
+    preview: str = ""
+    updated_at: Optional[datetime] = None
+    # Whether the key login fields (SUB=/SUBP=) are present — a rough validity hint.
+    looks_valid: bool = False
+
+
+class ImageCookieUpdate(BaseModel):
+    cookie: str
+
+
+class ImagePreviewRequest(BaseModel):
+    """Fetch the pid list (no download) for preview + selective download."""
+
+    uid: str = ""
+    album: str = ""
+    start: int = 1
+    end: Optional[int] = None
+
+
+class ImagePreviewItem(BaseModel):
+    pid: str
+    thumb_url: str
+    full_url: str
+
+
+class ImagePreviewResult(BaseModel):
+    out_dir_name: str
+    uid: str = ""
+    album_id: Optional[str] = None
+    pids: list[ImagePreviewItem] = []
+
+
+class ImagePullSelectedRequest(BaseModel):
+    pids: list[str]
+    out_dir_name: str
+    workers: int = 6
+
+
+# --------------------------------------------------------------------------- #
+# 小红书（XHS）：博主主页全量
+# --------------------------------------------------------------------------- #
+class XhsPreviewRequest(BaseModel):
+    """Fetch a 小红书 author's full image list (no download) for preview."""
+
+    user: str  # profile URL or user_id
+    max_notes: Optional[int] = None  # cap notes parsed (None = all)
+    headed: bool = False  # pop a real browser window to solve captcha + paginate
+
+
+class XhsPullRequest(BaseModel):
+    """Download ALL images of a 小红书 author."""
+
+    user: str
+    workers: int = 6
+    max_notes: Optional[int] = None
+    headed: bool = False
+
+
+class XhsPullSelectedRequest(BaseModel):
+    """Download only the chosen 小红书 image ids for an author."""
+
+    ids: list[str]
+    user: str
+    out_dir_name: str
+    workers: int = 6
+
+
+class ImageSettingsRead(BaseModel):
+    """Effective download/pull/filter root dir + whether it's the default."""
+
+    out_dir: str
+    default_out_dir: str
+    is_default: bool = True
+    exists: bool = False
+
+
+class ImageSettingsUpdate(BaseModel):
+    # Empty/None resets to the default output dir.
+    out_dir: Optional[str] = None
+
+
+class ImageBrowseResult(BaseModel):
+    """A directory listing for the settings folder picker."""
+
+    path: str
+    parent: Optional[str] = None
+    dirs: list[str] = []

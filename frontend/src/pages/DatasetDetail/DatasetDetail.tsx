@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   Tag, Upload, Wand2, Edit3, Eye, Trash2, X, Plus, Save, Pencil, HelpCircle, ShieldCheck,
-  CheckSquare, Square, ListChecks,
+  CheckSquare, Square, ListChecks, FolderInput, Loader2,
 } from 'lucide-react'
 import { api, BaseModel, Dataset, ImageItem } from '../../api/client'
 import Select from '../../components/Select/Select'
@@ -89,6 +89,25 @@ export default function DatasetDetail() {
     } catch (e: any) { setMsg(e.message) } finally { setBusy(false); setUploadPct(null) }
   }
 
+  // 从筛选产出的 single/ 目录一键导入
+  const [importOpen, setImportOpen] = useState(false)
+  const [importSources, setImportSources] = useState<{ name: string; source_dir: string; image_count: number }[] | null>(null)
+  const [importing, setImporting] = useState('')  // 正在导入的 source_dir
+  const openImportPicker = () => {
+    setImportOpen(true); setImportSources(null)
+    api.importSources().then(setImportSources).catch(() => setImportSources([]))
+  }
+  const doImport = async (source_dir: string) => {
+    setImporting(source_dir); setMsg('')
+    try {
+      const imgs = await api.importFromDir(dsId, source_dir)
+      setImages(imgs)
+      setDs((d) => (d ? { ...d, image_count: imgs.length } : d))
+      setImportOpen(false)
+      setMsg(`已从 ${source_dir} 导入图片`)
+    } catch (e: any) { setMsg(e.message) } finally { setImporting('') }
+  }
+
   const saveCaption = async (filename: string, caption: string) => {
     await api.updateCaption(dsId, filename, caption)
     setImages((prev) => prev.map((im) => (im.filename === filename ? { ...im, caption } : im)))
@@ -172,7 +191,7 @@ export default function DatasetDetail() {
     } catch (e: any) { setMsg(e.message) }
   }
 
-  if (!ds) return <p className="muted">加载中…</p>
+  if (!ds) return <p className="muted page-body">加载中…</p>
 
   const baseInfo = baseModels.find((b) => b.filename === ds.base_model)
   const baseText = baseInfo
@@ -197,8 +216,8 @@ export default function DatasetDetail() {
   const filtering = confFilter !== 'all' || qualFilter !== 'all'
 
   return (
-    <div>
-      {/* 粘性头部：标题 + 元信息 + 操作 */}
+    <div className="detail-page">
+      {/* 固定头部：标题 + 元信息 + 操作 */}
       <div className="detail-header">
         <div className="detail-header-info">
           <h1 className="detail-title">{ds.name}</h1>
@@ -235,260 +254,267 @@ export default function DatasetDetail() {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="toolbar">
-          <button className="btn ghost" disabled={busy || captioning} onClick={() => fileRef.current?.click()}>
-            <Upload size={16} />
-            {uploadPct !== null ? `上传中… ${uploadPct}%` : '上传图片'}
-          </button>
-          <button className="btn ghost" disabled={busy || captioning || images.length === 0} onClick={autoCaption}>
-            {captioning ? (<><span className="spinner" />打标中…</>) : (<><Wand2 size={16} className="icon-accent" />自动打标 / 注入触发词</>)}
-          </button>
-          <button className="btn ghost tip" data-tip={'检测图片是否适合作为训练素材：分辨率、清晰度（模糊）、曝光、宽高比，以及是否有清晰正脸/多人脸。\n结果仅作提醒，不影响训练。'} disabled={busy || checkingQuality || images.length === 0} onClick={runQualityCheck}>
-            {checkingQuality ? (<><span className="spinner" />检测中…</>) : (<><ShieldCheck size={16} className="icon-accent" />检测质量</>)}
-          </button>
-          <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple hidden
-            onChange={(e) => upload(e.target.files)} />
-          {images.length > 0 && (
-            selectMode ? (
-              <button className="btn ghost" onClick={exitSelect}>
-                <X size={16} />取消选择
-              </button>
-            ) : (
-              <button className="btn ghost" disabled={busy || captioning} onClick={() => setSelectMode(true)}>
-                <ListChecks size={16} className="icon-accent" />批量删除
-              </button>
-            )
+      {/* 独立滚动的内容区：头部固定，仅此区域滚动 */}
+      <div className="detail-scroll">
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="toolbar">
+            <button className="btn ghost" disabled={busy || captioning} onClick={() => fileRef.current?.click()}>
+              <Upload size={16} />
+              {uploadPct !== null ? `上传中… ${uploadPct}%` : '上传图片'}
+            </button>
+            <button className="btn ghost" disabled={busy || captioning} onClick={openImportPicker}>
+              <FolderInput size={16} className="icon-accent" />从筛选目录导入
+            </button>
+            <button className="btn ghost" disabled={busy || captioning || images.length === 0} onClick={autoCaption}>
+              {captioning ? (<><span className="spinner" />打标中…</>) : (<><Wand2 size={16} className="icon-accent" />自动打标 / 注入触发词</>)}
+            </button>
+            <button className="btn ghost tip" data-tip={'检测图片是否适合作为训练素材：分辨率、清晰度（模糊）、曝光、宽高比，以及是否有清晰正脸/多人脸。\n结果仅作提醒，不影响训练。'} disabled={busy || checkingQuality || images.length === 0} onClick={runQualityCheck}>
+              {checkingQuality ? (<><span className="spinner" />检测中…</>) : (<><ShieldCheck size={16} className="icon-accent" />检测质量</>)}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*,.heic,.heif" multiple hidden
+              onChange={(e) => upload(e.target.files)} />
+            {images.length > 0 && (
+              selectMode ? (
+                <button className="btn ghost" onClick={exitSelect}>
+                  <X size={16} />取消选择
+                </button>
+              ) : (
+                <button className="btn ghost" disabled={busy || captioning} onClick={() => setSelectMode(true)}>
+                  <ListChecks size={16} className="icon-accent" />批量删除
+                </button>
+              )
+            )}
+            <span className="spacer" />
+            {msg && <span className="muted">{msg}</span>}
+          </div>
+
+          {uploadPct !== null && (
+            <div className="progress" style={{ marginTop: 10 }}>
+              <div className="bar" style={{ width: `${uploadPct}%` }} />
+            </div>
           )}
-          <span className="spacer" />
-          {msg && <span className="muted">{msg}</span>}
-        </div>
 
-        {uploadPct !== null && (
-          <div className="progress" style={{ marginTop: 10 }}>
-            <div className="bar" style={{ width: `${uploadPct}%` }} />
-          </div>
-        )}
-
-        {/* 打标参数：内嵌子面板 */}
-        <div className="cap-controls">
-          <div className="cap-field" style={{ minWidth: 220 }}>
-            <label className="cap-label">打标模型</label>
-            <Select
-              value={capMethod}
-              onChange={(v) => setCapMethod(String(v))}
-              options={[
-                { value: 'auto', label: `自动（跟随底模：${autoCaptioner}）` },
-                { value: 'wd14', label: 'WD14 标签（写实/动漫均可，适合标身材等属性）' },
-                { value: 'blip', label: 'BLIP 自然语言描述' },
-              ]}
-            />
-          </div>
-          {showThreshold && (
-            <div className="cap-field" style={{ minWidth: 260 }}>
-              <div className="cap-label-row">
-                <label className="cap-label">
-                  打标强度
-                  <span className="cap-help tip" tabIndex={0}
-                    data-tip={'预设一键切换 WD14 阈值（模型给每个标签打 0~1 的分，只有 ≥ 阈值的标签才写入）：\n\n· 宽松 0.25 → 标签最多，能标出身材、姿势等细粒度属性，但噪声/错标也多\n· 均衡 0.35 → 通用默认，兼顾数量与准确\n· 严格 0.50 → 只留高置信标签，最干净但可能漏标\n\n选完预设仍可用下方滑块微调。'}>
-                    <HelpCircle size={13} />
-                  </span>
-                </label>
-                <span className="cap-value">{threshold.toFixed(2)}</span>
-              </div>
-              <div className="preset-row">
-                {([
-                  ['宽松', 0.25], ['均衡', 0.35], ['严格', 0.5],
-                ] as const).map(([label, val]) => (
-                  <button
-                    key={label}
-                    type="button"
-                    className={`preset-chip${Math.abs(threshold - val) < 0.001 ? ' active' : ''}`}
-                    onClick={() => setThreshold(val)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="range" min={0.1} max={0.7} step={0.05} value={threshold}
-                onChange={(e) => setThreshold(Number(e.target.value))}
-                style={{ width: '100%', marginTop: 8 }}
+          {/* 打标参数：内嵌子面板 */}
+          <div className="cap-controls">
+            <div className="cap-field cap-field-model">
+              <label className="cap-label">打标模型</label>
+              <Select
+                value={capMethod}
+                onChange={(v) => setCapMethod(String(v))}
+                options={[
+                  { value: 'auto', label: `自动（跟随底模：${autoCaptioner}）` },
+                  { value: 'wd14', label: 'WD14 标签（写实/动漫均可，适合标身材等属性）' },
+                  { value: 'blip', label: 'BLIP 自然语言描述' },
+                ]}
               />
             </div>
-          )}
-          {showThreshold && (
-            <label className="cap-check">
-              <input type="checkbox" checked={excludeBodyFace}
-                onChange={(e) => setExcludeBodyFace(e.target.checked)} />
-              固化人物特征 <span className="muted" style={{ fontSize: 12 }}>(去掉身材/脸型标签)</span>
-            </label>
-          )}
-          {showThreshold && (
-            <div className="cap-field" style={{ minWidth: 240, flex: 1 }}>
-              <label className="cap-label">额外排除标签 <span className="muted">(逗号分隔, 可选)</span></label>
-              <input className="input" value={excludeTags}
-                placeholder="如: tattoo, glasses"
-                onChange={(e) => setExcludeTags(e.target.value)} />
-            </div>
-          )}
-        </div>
-
-        <p className="muted" style={{ marginTop: 12, lineHeight: 1.6 }}>
-          建议 15–40 张，多角度多表情多服装；核心外观特征不写入标签，触发词会被放到标签首位。
-          本次将使用 <strong>{effectiveMethod}</strong>。
-          {showThreshold && '　阈值越低标签越多（含身材等细粒度属性），但噪声也越多；标不出想要的属性可调低到 0.2 左右。'}
-          {showThreshold && excludeBodyFace && '　已勾选“固化人物特征”：身材/脸型标签会被从标注中移除，从而烘焙进触发词，让出图时该人物的身材脸型稳定还原（推荐用于人物 LoRA）。'}
-          {captioning && <span style={{ color: 'var(--accent-2)' }}>　首次运行需下载打标模型，请耐心等待…</span>}
-        </p>
-      </div>
-
-      {images.length === 0 ? (
-        <div className="card"><div className="empty">还没有图片，点击上方上传。</div></div>
-      ) : (
-        <>
-          {selectMode && (
-            <div className="select-bar">
-              <button className="filter-chip" onClick={() => toggleSelectAll(filteredImages)}>
-                {filteredImages.length > 0 && filteredImages.every((im) => selected.has(im.filename))
-                  ? (<><CheckSquare size={14} />取消全选</>)
-                  : (<><Square size={14} />全选{filtering ? '（当前筛选）' : ''}</>)}
-              </button>
-              <span className="muted filter-count">已选 {selected.size} 张</span>
-              <span className="spacer" />
-              <button className="btn danger sm" disabled={selected.size === 0 || bulkDeleting} onClick={bulkDelete}>
-                {bulkDeleting ? (<><span className="spinner" />删除中…</>) : (<><Trash2 size={15} />删除选中（{selected.size}）</>)}
-              </button>
-            </div>
-          )}
-          {(hasConfData || hasQualData) && (
-            <div className="filter-bar">
-              {hasConfData && (
-                <div className="filter-group">
-                  <span className="filter-label">置信度</span>
+            {showThreshold && (
+              <div className="cap-field cap-field-strength">
+                <div className="cap-label-row">
+                  <label className="cap-label">
+                    打标强度
+                    <span className="cap-help tip" tabIndex={0}
+                      data-tip={'预设一键切换 WD14 阈值（模型给每个标签打 0~1 的分，只有 ≥ 阈值的标签才写入）：\n\n· 宽松 0.25 → 标签最多，能标出身材、姿势等细粒度属性，但噪声/错标也多\n· 均衡 0.35 → 通用默认，兼顾数量与准确\n· 严格 0.50 → 只留高置信标签，最干净但可能漏标\n\n选完预设仍可用下方滑块微调。'}>
+                      <HelpCircle size={13} />
+                    </span>
+                  </label>
+                  <span className="cap-value">{threshold.toFixed(2)}</span>
+                </div>
+                <div className="preset-row">
                   {([
-                    ['all', '全部'], ['high', '可信'], ['mid', '留意'], ['low', '需核对'],
-                  ] as const).map(([v, label]) => (
+                    ['宽松', 0.25], ['均衡', 0.35], ['严格', 0.5],
+                  ] as const).map(([label, val]) => (
                     <button
-                      key={v}
-                      className={`filter-chip${confFilter === v ? ' active' : ''}${v !== 'all' ? ` conf-${v}` : ''}`}
-                      onClick={() => setConfFilter(v)}
+                      key={label}
+                      type="button"
+                      className={`preset-chip${Math.abs(threshold - val) < 0.001 ? ' active' : ''}`}
+                      onClick={() => setThreshold(val)}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
-              )}
-              {hasQualData && (
-                <div className="filter-group">
-                  <span className="filter-label">质量</span>
-                  {([
-                    ['all', '全部'], ['ok', '无问题'], ['warn', '待核对'], ['bad', '不建议'],
-                  ] as const).map(([v, label]) => (
-                    <button
-                      key={v}
-                      className={`filter-chip${qualFilter === v ? ' active' : ''}${v !== 'all' ? ` qual-${v}` : ''}`}
-                      onClick={() => setQualFilter(v)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <span className="spacer" />
-              <span className="muted filter-count">
-                {filtering ? `筛选出 ${filteredImages.length} / ${images.length} 张` : `共 ${images.length} 张`}
-              </span>
-              {filtering && (
-                <button className="filter-chip" onClick={() => { setConfFilter('all'); setQualFilter('all') }}>
-                  清除筛选
-                </button>
-              )}
-            </div>
-          )}
-          <div className="img-grid-wrap">
-            {captioning && (
-              <div className="grid-overlay">
-                <span className="spinner lg" />
-                <span>正在打标…</span>
+                <input
+                  type="range" min={0.1} max={0.7} step={0.05} value={threshold}
+                  onChange={(e) => setThreshold(Number(e.target.value))}
+                  style={{ width: '100%', marginTop: 8 }}
+                />
               </div>
             )}
-            {filteredImages.length === 0 ? (
-              <div className="card"><div className="empty">没有符合筛选条件的图片。</div></div>
-            ) : (
-              <div className="img-grid">
-                {filteredImages.map((im) => {
-                  const tagCount = im.caption.split(',').map((t) => t.trim()).filter(Boolean).length
-                  const conf = imageConfidenceLevel(im)
-                  const checked = selected.has(im.filename)
-                  return (
-                    <div
-                      className="img-cell"
-                      key={im.filename}
-                      data-confidence={conf ?? undefined}
-                      data-selected={selectMode && checked ? '' : undefined}
-                    >
-                      <div className="img-media">
-                        <img src={im.thumbnail_url} alt={im.filename} className="img-thumb"
-                          onClick={() => (selectMode ? toggleSelect(im.filename) : setEditing(im))} />
-                        {selectMode ? (
-                          <button
-                            className={`select-check${checked ? ' checked' : ''}`}
-                            title={checked ? '取消选择' : '选择'}
-                            onClick={() => toggleSelect(im.filename)}
-                          >
-                            {checked ? <CheckSquare size={18} /> : <Square size={18} />}
-                          </button>
-                        ) : (
-                          /* hover 浮出操作层 */
-                          <div className="img-overlay">
-                            <button className="round-btn primary" title="编辑标签" onClick={() => setEditing(im)}>
-                              <Edit3 size={18} />
-                            </button>
-                            <button className="round-btn" title="预览原图" onClick={() => setPreview(im)}>
-                              <Eye size={18} />
-                            </button>
-                            <button className="round-btn danger" title="删除图片" onClick={() => removeImage(im.filename)}>
-                              <Trash2 size={18} />
-                            </button>
-                          </div>
-                        )}
-                        {im.quality && im.quality.level !== 'ok' && (
-                          <span
-                            className={`quality-badge quality-${im.quality.level}`}
-                            title={(im.quality.level === 'bad' ? '不建议用于训练：' : '建议核对：')
-                              + (im.quality.issues.map((i) => i.label).join('、') || '存在质量问题')}
-                          >
-                            {im.quality.level === 'bad' ? '不建议' : '待核对'}
-                          </span>
-                        )}
-                        {conf && !selectMode && (
-                          <span className={`conf-badge conf-${conf}`}
-                            title={conf === 'low' ? '存在低置信度标签，建议核对'
-                              : conf === 'mid' ? '含中等置信度标签，可留意' : '标签置信度较高'}>
-                            {conf === 'low' ? '需核对' : conf === 'mid' ? '留意' : '可信'}
-                          </span>
-                        )}
-                        <span className="tag-badge" title="标签数量">
-                          <Tag size={12} />
-                          {tagCount}
-                        </span>
-                      </div>
-                      <div className="cap">
-                        <div className="cap-name" title={im.filename}>{im.filename}</div>
-                        <div className="cap-tags" title="点击编辑标签"
-                          onClick={() => (selectMode ? toggleSelect(im.filename) : setEditing(im))}>
-                          {im.caption || <span className="muted">未打标</span>}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+            {showThreshold && (
+              <label className="cap-check">
+                <input type="checkbox" checked={excludeBodyFace}
+                  onChange={(e) => setExcludeBodyFace(e.target.checked)} />
+                固化人物特征 <span className="muted" style={{ fontSize: 12 }}>(去掉身材/脸型标签)</span>
+              </label>
+            )}
+            {showThreshold && (
+              <div className="cap-field cap-field-exclude">
+                <label className="cap-label">额外排除标签 <span className="muted">(逗号分隔, 可选)</span></label>
+                <input className="input" value={excludeTags}
+                  placeholder="如: tattoo, glasses"
+                  onChange={(e) => setExcludeTags(e.target.value)} />
               </div>
             )}
           </div>
-        </>
-      )}
+
+          <p className="muted" style={{ marginTop: 12, lineHeight: 1.6 }}>
+            建议 15–40 张，多角度多表情多服装；核心外观特征不写入标签，触发词会被放到标签首位。
+            本次将使用 <strong>{effectiveMethod}</strong>。
+            {showThreshold && '　阈值越低标签越多（含身材等细粒度属性），但噪声也越多；标不出想要的属性可调低到 0.2 左右。'}
+            {showThreshold && excludeBodyFace && '　已勾选“固化人物特征”：身材/脸型标签会被从标注中移除，从而烘焙进触发词，让出图时该人物的身材脸型稳定还原（推荐用于人物 LoRA）。'}
+            {captioning && <span style={{ color: 'var(--accent-2)' }}>　首次运行需下载打标模型，请耐心等待…</span>}
+          </p>
+        </div>
+
+        {images.length === 0 ? (
+          <div className="card"><div className="empty">还没有图片，点击上方上传。</div></div>
+        ) : (
+          <>
+            {selectMode && (
+              <div className="select-bar">
+                <button className="filter-chip" onClick={() => toggleSelectAll(filteredImages)}>
+                  {filteredImages.length > 0 && filteredImages.every((im) => selected.has(im.filename))
+                    ? (<><CheckSquare size={14} />取消全选</>)
+                    : (<><Square size={14} />全选{filtering ? '（当前筛选）' : ''}</>)}
+                </button>
+                <span className="muted filter-count">已选 {selected.size} 张</span>
+                <span className="spacer" />
+                <button className="btn danger sm" disabled={selected.size === 0 || bulkDeleting} onClick={bulkDelete}>
+                  {bulkDeleting ? (<><span className="spinner" />删除中…</>) : (<><Trash2 size={15} />删除选中（{selected.size}）</>)}
+                </button>
+              </div>
+            )}
+            {(hasConfData || hasQualData) && (
+              <div className="filter-bar">
+                {hasConfData && (
+                  <div className="filter-group">
+                    <span className="filter-label">置信度</span>
+                    {([
+                      ['all', '全部'], ['high', '可信'], ['mid', '留意'], ['low', '需核对'],
+                    ] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        className={`filter-chip${confFilter === v ? ' active' : ''}${v !== 'all' ? ` conf-${v}` : ''}`}
+                        onClick={() => setConfFilter(v)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {hasQualData && (
+                  <div className="filter-group">
+                    <span className="filter-label">质量</span>
+                    {([
+                      ['all', '全部'], ['ok', '无问题'], ['warn', '待核对'], ['bad', '不建议'],
+                    ] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        className={`filter-chip${qualFilter === v ? ' active' : ''}${v !== 'all' ? ` qual-${v}` : ''}`}
+                        onClick={() => setQualFilter(v)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <span className="spacer" />
+                <span className="muted filter-count">
+                  {filtering ? `筛选出 ${filteredImages.length} / ${images.length} 张` : `共 ${images.length} 张`}
+                </span>
+                {filtering && (
+                  <button className="filter-chip" onClick={() => { setConfFilter('all'); setQualFilter('all') }}>
+                    清除筛选
+                  </button>
+                )}
+              </div>
+            )}
+            <div className="img-grid-wrap">
+              {captioning && (
+                <div className="grid-overlay">
+                  <span className="spinner lg" />
+                  <span>正在打标…</span>
+                </div>
+              )}
+              {filteredImages.length === 0 ? (
+                <div className="card"><div className="empty">没有符合筛选条件的图片。</div></div>
+              ) : (
+                <div className="img-grid">
+                  {filteredImages.map((im) => {
+                    const tagCount = im.caption.split(',').map((t) => t.trim()).filter(Boolean).length
+                    const conf = imageConfidenceLevel(im)
+                    const checked = selected.has(im.filename)
+                    return (
+                      <div
+                        className="img-cell"
+                        key={im.filename}
+                        data-confidence={conf ?? undefined}
+                        data-selected={selectMode && checked ? '' : undefined}
+                      >
+                        <div className="img-media">
+                          <img src={im.thumbnail_url} alt={im.filename} className="img-thumb"
+                            onClick={() => (selectMode ? toggleSelect(im.filename) : setEditing(im))} />
+                          {selectMode ? (
+                            <button
+                              className={`select-check${checked ? ' checked' : ''}`}
+                              title={checked ? '取消选择' : '选择'}
+                              onClick={() => toggleSelect(im.filename)}
+                            >
+                              {checked ? <CheckSquare size={18} /> : <Square size={18} />}
+                            </button>
+                          ) : (
+                            /* hover 浮出操作层 */
+                            <div className="img-overlay">
+                              <button className="round-btn primary" title="编辑标签" onClick={() => setEditing(im)}>
+                                <Edit3 size={18} />
+                              </button>
+                              <button className="round-btn" title="预览原图" onClick={() => setPreview(im)}>
+                                <Eye size={18} />
+                              </button>
+                              <button className="round-btn danger" title="删除图片" onClick={() => removeImage(im.filename)}>
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          )}
+                          {im.quality && im.quality.level !== 'ok' && (
+                            <span
+                              className={`quality-badge quality-${im.quality.level}`}
+                              title={(im.quality.level === 'bad' ? '不建议用于训练：' : '建议核对：')
+                                + (im.quality.issues.map((i) => i.label).join('、') || '存在质量问题')}
+                            >
+                              {im.quality.level === 'bad' ? '不建议' : '待核对'}
+                            </span>
+                          )}
+                          {conf && !selectMode && (
+                            <span className={`conf-badge conf-${conf}`}
+                              title={conf === 'low' ? '存在低置信度标签，建议核对'
+                                : conf === 'mid' ? '含中等置信度标签，可留意' : '标签置信度较高'}>
+                              {conf === 'low' ? '需核对' : conf === 'mid' ? '留意' : '可信'}
+                            </span>
+                          )}
+                          <span className="tag-badge" title="标签数量">
+                            <Tag size={12} />
+                            {tagCount}
+                          </span>
+                        </div>
+                        <div className="cap">
+                          <div className="cap-name" title={im.filename}>{im.filename}</div>
+                          <div className="cap-tags" title="点击编辑标签"
+                            onClick={() => (selectMode ? toggleSelect(im.filename) : setEditing(im))}>
+                            {im.caption || <span className="muted">未打标</span>}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      {/* /detail-scroll */}
 
       {editing && (
         <TagEditor
@@ -506,6 +532,42 @@ export default function DatasetDetail() {
               <X size={18} />
             </button>
             <img src={preview.image_url} alt={preview.filename} />
+          </div>
+        </div>
+      )}
+
+      {importOpen && (
+        <div className="modal-backdrop" onClick={() => importing || setImportOpen(false)}>
+          <div className="import-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="import-head">
+              <span className="import-title"><FolderInput size={16} className="icon-accent" /> 从筛选目录导入</span>
+              <span className="spacer" />
+              <button className="round-btn" title="关闭" disabled={!!importing} onClick={() => setImportOpen(false)}>
+                <X size={16} />
+              </button>
+            </div>
+            <p className="muted import-hint">选择「图片筛选」产出的单人可训练目录（single/），一键把图片导入本数据集。导入后可在此打标。</p>
+            <div className="import-list">
+              {importSources === null ? (
+                <div className="import-empty"><span className="spinner" /> 加载中…</div>
+              ) : importSources.length === 0 ? (
+                <div className="import-empty muted">暂无可导入目录。请先到「图片管理 → 图片筛选」跑一次筛选，产出 single/ 后再来。</div>
+              ) : (
+                importSources.map((s) => (
+                  <button
+                    key={s.source_dir}
+                    className="import-item"
+                    disabled={!!importing}
+                    onClick={() => doImport(s.source_dir)}
+                  >
+                    <FolderInput size={16} className="icon-accent" />
+                    <span className="import-name">{s.source_dir}</span>
+                    <span className="badge">{s.image_count} 张</span>
+                    {importing === s.source_dir && <Loader2 size={15} className="spin" />}
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}

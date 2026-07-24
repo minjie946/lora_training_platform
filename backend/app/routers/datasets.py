@@ -21,6 +21,7 @@ from ..schemas import (
 from ..services import caption_manager
 from ..services import caption_service as cap
 from ..services import dataset_service as ds
+from ..services import image_manager
 
 router = APIRouter(prefix="/api/datasets", tags=["datasets"])
 
@@ -168,6 +169,36 @@ async def upload_images(
             ds.save_image(dataset_id, obj.repeat, obj.concept, f.filename, data)
         except ValueError as e:
             raise HTTPException(400, str(e))
+    obj.image_count = ds.count_images(dataset_id)
+    session.add(obj)
+    session.commit()
+    return ds.list_images(dataset_id)
+
+
+class ImportFromDirIn(BaseModel):
+    # Relative path under the image-tools output root, e.g. "uid_123/single".
+    source_dir: str
+
+
+@router.get("/import-sources/list")
+def list_import_sources():
+    """List filter output dirs that contain a single/ folder, for the picker."""
+    return image_manager.list_single_sources()
+
+
+@router.post("/{dataset_id}/import-from-dir", response_model=list[ImageItem])
+def import_from_dir(
+    dataset_id: int,
+    payload: ImportFromDirIn,
+    session: Session = Depends(session_dependency),
+):
+    """Import images from a filter output directory (e.g. a single/ folder)."""
+    obj = _get_or_404(session, dataset_id)
+    try:
+        src = image_manager.resolve_source_dir(payload.source_dir)
+        ds.import_from_dir(dataset_id, obj.repeat, obj.concept, src)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     obj.image_count = ds.count_images(dataset_id)
     session.add(obj)
     session.commit()

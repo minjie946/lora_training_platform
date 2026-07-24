@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, Job } from '../../api/client'
 import { statusBadge, jobStepText } from '../../components/helpers'
+import PageHeader from '../../components/PageHeader/PageHeader'
 import './Jobs.css'
 
 export default function Jobs() {
@@ -43,64 +44,66 @@ export default function Jobs() {
   }
 
   return (
-    <div>
-      <div className="toolbar">
-        <h1 className="page-title">训练任务</h1>
-        <span className="spacer" />
-        <Link className="btn" to="/jobs/new">+ 新建训练</Link>
-      </div>
-      <div className="table-card">
-        {jobs.length === 0 ? (
-          <div className="empty">还没有训练任务。</div>
-        ) : (
-          <table>
-            <thead>
-              <tr><th>名称</th><th>状态</th><th>底模</th><th>进度</th><th>步数</th><th>Loss</th><th></th></tr>
-            </thead>
-            <tbody>
-              {jobs.map((j) => {
-                const b = statusBadge(j.status)
-                return (
-                  <tr key={j.id}>
-                    <td><Link className="linkish" to={`/jobs/${j.id}`}>{j.name}</Link></td>
-                    <td><span className={b.cls}>{b.text}</span></td>
-                    <td className="muted">{j.base_model ? j.base_model.replace(/\.safetensors$/, '') : '—'}</td>
-                    <td style={{ width: 160 }}>
-                      <div className="progress"><div className="bar" style={{ width: `${j.progress * 100}%` }} /></div>
-                    </td>
-                    <td>{jobStepText(j)}</td>
-                    <td>{j.latest_loss != null ? j.latest_loss.toFixed(4) : '—'}</td>
-                    <td>
-                      <div className="row-actions">
-                        <Link className="btn sm ghost" to={`/jobs/${j.id}`}>详情</Link>
-                        {j.status !== 'running' && j.status !== 'paused' && j.status !== 'queued' && (
-                          <Link className="btn sm ghost" to={`/jobs/${j.id}/edit`}>编辑</Link>
-                        )}
-                        {j.status === 'queued' && (
-                          <button className="btn sm ghost" onClick={() => dequeue(j)} title="从队列中移除，不再自动开始">取消排队</button>
-                        )}
-                        {j.status === 'running' && j.has_checkpoint && (
-                          <button className="btn sm ghost" onClick={() => pause(j)} title="从最近的检查点暂停，之后可继续">暂停</button>
-                        )}
-                        {j.status === 'paused' && (
-                          <button className="btn sm" onClick={() => resume(j)}>继续</button>
-                        )}
-                        <button
-                          className="icon-btn danger"
-                          title="删除任务"
-                          disabled={deleting === j.id}
-                          onClick={() => remove(j)}
-                        >
-                          {deleting === j.id ? <span className="spinner" /> : <IconTrash />}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
+    <div className="page">
+      <PageHeader
+        title="训练任务"
+        subtitle="管理与监控 LoRA 训练任务"
+        actions={<Link className="btn" to="/jobs/new">+ 新建训练</Link>}
+      />
+      <div className="page-body">
+        <div className="table-card">
+          {jobs.length === 0 ? (
+            <div className="empty">还没有训练任务。</div>
+          ) : (
+            <table>
+              <thead>
+                <tr><th>名称</th><th>状态</th><th>底模</th><th>进度</th><th>步数</th><th>Loss</th><th></th></tr>
+              </thead>
+              <tbody>
+                {jobs.map((j) => {
+                  const b = statusBadge(j.status)
+                  return (
+                    <tr key={j.id}>
+                      <td><Link className="linkish" to={`/jobs/${j.id}`}>{j.name}</Link></td>
+                      <td><span className={b.cls}>{b.text}</span></td>
+                      <td className="muted">{j.base_model ? j.base_model.replace(/\.safetensors$/, '') : '—'}</td>
+                      <td style={{ width: 160 }}>
+                        <div className="progress"><div className="bar" style={{ width: `${j.progress * 100}%` }} /></div>
+                      </td>
+                      <td>{jobStepText(j)}</td>
+                      <td>{j.latest_loss != null ? j.latest_loss.toFixed(4) : '—'}</td>
+                      <td>
+                        <div className="row-actions">
+                          <Link className="btn sm ghost" to={`/jobs/${j.id}`}>详情</Link>
+                          {j.status !== 'running' && j.status !== 'paused' && j.status !== 'queued' && (
+                            <Link className="btn sm ghost" to={`/jobs/${j.id}/edit`}>编辑</Link>
+                          )}
+                          {j.status === 'queued' && (
+                            <button className="btn sm ghost" onClick={() => dequeue(j)} title="从队列中移除，不再自动开始">取消排队</button>
+                          )}
+                          {j.status === 'running' && j.has_checkpoint && (
+                            <button className="btn sm ghost" onClick={() => pause(j)} title="从最近的检查点暂停，之后可继续">暂停</button>
+                          )}
+                          {j.status === 'paused' && (
+                            <button className="btn sm" onClick={() => resume(j)}>继续</button>
+                          )}
+                          <button
+                            className="icon-btn danger"
+                            title="删除任务"
+                            disabled={deleting === j.id}
+                            onClick={() => remove(j)}
+                          >
+                            {deleting === j.id ? <span className="spinner" /> : <IconTrash />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   )

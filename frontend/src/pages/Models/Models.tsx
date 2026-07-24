@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, LoraModel } from '../../api/client'
 import { formatBytes } from '../../components/helpers'
+import PageHeader from '../../components/PageHeader/PageHeader'
 import './Models.css'
 
 export default function Models() {
@@ -15,7 +16,7 @@ export default function Models() {
         setModels(rows)
         setSelected(new Set())
       })
-      .catch(() => {})
+      .catch(() => { })
   useEffect(() => { load() }, [])
 
   const toggle = (id: number) => {
@@ -51,66 +52,66 @@ export default function Models() {
   const allChecked = models.length > 0 && selected.size === models.length
 
   return (
-    <div>
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">模型库</h1>
-          <p className="page-sub">所有训练产出的 LoRA 权重</p>
-        </div>
-        {selected.size > 0 && (
+    <div className="page">
+      <PageHeader
+        title="模型库"
+        subtitle="所有训练产出的 LoRA 权重"
+        actions={selected.size > 0 ? (
           <button className="btn danger" onClick={removeSelected}>
             删除选中 ({selected.size})
           </button>
-        )}
-      </div>
-      <div className="table-card">
-        {models.length === 0 ? (
-          <div className="empty">还没有产出的模型。完成一次训练后会出现在这里。</div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th className="cell-check">
-                  <input
-                    type="checkbox"
-                    checked={allChecked}
-                    onChange={toggleAll}
-                    aria-label="全选"
-                  />
-                </th>
-                <th>文件</th>
-                <th>来源任务</th>
-                <th>底模</th>
-                <th>Epoch</th>
-                <th>大小</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {models.map((m) => (
-                <tr key={m.id} className={selected.has(m.id) ? 'row-selected' : ''}>
-                  <td className="cell-check">
+        ) : undefined}
+      />
+      <div className="page-body">
+        <div className="table-card">
+          {models.length === 0 ? (
+            <div className="empty">还没有产出的模型。完成一次训练后会出现在这里。</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th className="cell-check">
                     <input
                       type="checkbox"
-                      checked={selected.has(m.id)}
-                      onChange={() => toggle(m.id)}
-                      aria-label={`选择 ${m.name}`}
+                      checked={allChecked}
+                      onChange={toggleAll}
+                      aria-label="全选"
                     />
-                  </td>
-                  <td>{m.name}</td>
-                  <td><Link className="linkish" to={`/jobs/${m.job_id}`}>#{m.job_id}</Link></td>
-                  <td className="muted">{m.base_model ? m.base_model.replace(/\.safetensors$/, '') : '—'}</td>
-                  <td>{m.epoch}</td>
-                  <td>{formatBytes(m.file_size)}</td>
-                  <td>
-                    <a className="btn sm" href={api.modelDownloadUrl(m.id)}>下载</a>{' '}
-                    <button className="btn sm danger" onClick={() => remove(m.id)}>删除</button>
-                  </td>
+                  </th>
+                  <th>文件</th>
+                  <th>来源任务</th>
+                  <th>底模</th>
+                  <th>Epoch</th>
+                  <th>大小</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>
+                {models.map((m) => (
+                  <tr key={m.id} className={selected.has(m.id) ? 'row-selected' : ''}>
+                    <td className="cell-check">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(m.id)}
+                        onChange={() => toggle(m.id)}
+                        aria-label={`选择 ${m.name}`}
+                      />
+                    </td>
+                    <td>{m.name}</td>
+                    <td><Link className="linkish" to={`/jobs/${m.job_id}`}>#{m.job_id}</Link></td>
+                    <td className="muted">{m.base_model ? m.base_model.replace(/\.safetensors$/, '') : '—'}</td>
+                    <td>{m.epoch}</td>
+                    <td>{formatBytes(m.file_size)}</td>
+                    <td>
+                      <a className="btn sm" href={api.modelDownloadUrl(m.id)}>下载</a>{' '}
+                      <button className="btn sm danger" onClick={() => remove(m.id)}>删除</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   )

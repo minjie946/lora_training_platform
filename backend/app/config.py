@@ -27,7 +27,6 @@ KOHYA_DIR = Path(os.environ.get("KOHYA_DIR", ENGINES_DIR / "sd-scripts"))
 RVC_DIR = Path(
     os.environ.get("RVC_DIR", ENGINES_DIR / "Retrieval-based-Voice-Conversion-WebUI")
 )
-
 # RVC has heavy deps that conflict with kohya's pinned torch, so it gets its own
 # virtualenv. Local SVC training is launched with this interpreter (falls back
 # to RVC_DIR/.venv/bin/python).
@@ -35,6 +34,42 @@ RVC_PYTHON = Path(os.environ.get("RVC_PYTHON", RVC_DIR / ".venv" / "bin" / "pyth
 
 # Default base model filename expected under MODELS_BASE_DIR.
 DEFAULT_BASE_MODEL = os.environ.get("DEFAULT_BASE_MODEL", "animagine-xl-4.0-opt.safetensors")
+
+# ---------------------------------------------------------------------------
+# Image tools (微博图片管理): self-contained inside this project. The two
+# standalone scripts live under backend/app/image_tools/ (version-controlled),
+# while their runtime data — downloaded photos, model caches, cookie — live under
+# the workspace (git-ignored). Their heavy CV deps (opencv/insightface/ultralytics)
+# are declared as PEP 723 inline deps, so we launch them via `uv run --script`
+# (which provisions an ephemeral env) rather than importing them into this venv.
+IMAGE_TOOLS_DIR = Path(
+    os.environ.get("IMAGE_TOOLS_DIR", BACKEND_DIR / "app" / "image_tools")
+)
+# Runtime data root (git-ignored) for the image tools.
+IMAGE_TOOLS_WORKSPACE = WORKSPACE_DIR / "image_tools"
+# Where downloaded albums land + get filtered.
+IMAGE_TOOLS_OUT_DIR = Path(
+    os.environ.get("IMAGE_TOOLS_OUT_DIR", IMAGE_TOOLS_WORKSPACE / "photos")
+)
+IMAGE_TOOLS_COOKIE = Path(
+    os.environ.get("IMAGE_TOOLS_COOKIE", IMAGE_TOOLS_WORKSPACE / "cookie.txt")
+)
+# Xiaohongshu (小红书) uses a separate login cookie (needs a1 / web_session / webId).
+IMAGE_TOOLS_XHS_COOKIE = Path(
+    os.environ.get("IMAGE_TOOLS_XHS_COOKIE", IMAGE_TOOLS_WORKSPACE / "xhs_cookie.txt")
+)
+# Persistent model caches for the single-person filter (shared across runs so we
+# never re-download InsightFace ~600MB / YOLOv8n ~6MB). Passed to the script via
+# INSIGHTFACE_ROOT / YOLO_WEIGHTS env vars.
+IMAGE_TOOLS_INSIGHTFACE_ROOT = (
+    IMAGE_TOOLS_WORKSPACE / "models_insightface"
+)
+IMAGE_TOOLS_YOLO_WEIGHTS = (
+    IMAGE_TOOLS_WORKSPACE / "models_yolo" / "yolov8n.pt"
+)
+# `uv` launcher used to run the PEP 723 scripts. Absolute path is safest since
+# the backend may run under a service manager without the user's PATH.
+UV_BIN = os.environ.get("UV_BIN", "uv")
 
 THUMBNAIL_SIZE = (256, 256)
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
@@ -50,5 +85,6 @@ def ensure_dirs() -> None:
         JOBS_DIR,
         VOICE_DATASETS_DIR,
         VOICE_JOBS_DIR,
+        IMAGE_TOOLS_OUT_DIR,
     ):
         d.mkdir(parents=True, exist_ok=True)
