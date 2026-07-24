@@ -142,6 +142,35 @@ def inject_trigger(caption: str, trigger: str) -> str:
     return _join_tags([trigger, *tags])
 
 
+# Selectable WD14 tagger models (all timm `hf-hub:` repos, loaded by wdtagger).
+# swinv2-v3 is wdtagger's default: fast, good accuracy — kept as our default.
+# eva02-large-v3 is the most accurate of the v3 family but much heavier (runs on
+# CPU here since wdtagger has no MPS path), so it's opt-in.
+WD14_MODELS = {
+    "swinv2-v3": "SmilingWolf/wd-swinv2-tagger-v3",
+    "eva02-large-v3": "SmilingWolf/wd-eva02-large-tagger-v3",
+}
+DEFAULT_WD14_MODEL = "swinv2-v3"
+
+
+def _resolve_wd14_repo(wd14_model: str) -> str:
+    """Map a short key ('eva02-large-v3') or a raw HF repo id to a repo id."""
+    key = (wd14_model or "").strip()
+    if not key:
+        return WD14_MODELS[DEFAULT_WD14_MODEL]
+    if key in WD14_MODELS:
+        return WD14_MODELS[key]
+    # Allow passing a full repo id directly (forward-compatible with new models).
+    return key
+
+
+# Florence-2 captioner: microsoft's lightweight VLM. The "large" variant gives
+# noticeably richer captions than BLIP while staying manageable on-device.
+FLORENCE2_MODEL = "microsoft/Florence-2-large"
+# Task prompt controlling verbosity: <CAPTION> | <DETAILED_CAPTION> | <MORE_DETAILED_CAPTION>.
+FLORENCE2_TASK = "<DETAILED_CAPTION>"
+
+
 def wd14_available() -> bool:
     return importlib.util.find_spec("wdtagger") is not None
 
@@ -150,6 +179,16 @@ def blip_available() -> bool:
     return (
         importlib.util.find_spec("transformers") is not None
         and importlib.util.find_spec("torch") is not None
+    )
+
+
+def florence2_available() -> bool:
+    # Florence-2 loads with trust_remote_code and needs einops + timm at runtime.
+    return (
+        importlib.util.find_spec("transformers") is not None
+        and importlib.util.find_spec("torch") is not None
+        and importlib.util.find_spec("einops") is not None
+        and importlib.util.find_spec("timm") is not None
     )
 
 
@@ -223,11 +262,14 @@ def _blip_caption_image(processor, model, image_path: Path) -> str:
     return processor.decode(out[0], skip_special_tokens=True).strip()
 
 
-def _run_wd14(images, threshold, do_inject, trigger, excludes=None) -> tuple[str, int, str]:
+def _run_wd14(
+    images, threshold, do_inject, trigger, excludes=None, wd14_model="",
+) -> tuple[str, int, str]:
     import wdtagger  # type: ignore
 
     _ensure_hf_direct()  # bypass local MITM proxy for the model download
-    tagger = wdtagger.Tagger()
+    repo = _resolve_wd14_repo(wd14_model)
+    tagger = wdtagger.Tagger(model_repo=repo)
     excludes = excludes or []
     count = 0
     removed_total = 0
@@ -247,7 +289,8 @@ def _run_wd14(images, threshold, do_inject, trigger, excludes=None) -> tuple[str
         _write_wdtags(p, pairs, threshold)
         count += 1
     extra = f"，已排除 {removed_total} 处身材/脸型等标签（烘焙进触发词）" if excludes else ""
-    return "wd14", count, f"WD14 标签打标完成，共 {count} 张{extra}"
+    model_note = f"（{repo.split('/')[-1]}）"
+    return "wd14", count, f"WD14 标签打标完成{model_note}，共 {count} 张{extra}"
 
 
 def _run_blip(images, do_inject, trigger) -> tuple[str, int, str]:
@@ -260,6 +303,76 @@ def _run_blip(images, do_inject, trigger) -> tuple[str, int, str]:
         p.with_suffix(".txt").write_text(caption, encoding="utf-8")
         count += 1
     return "blip", count, f"BLIP 自然语言描述完成（写实风格），共 {count} 张"
+
+
+_florence_cache: dict = {}
+
+
+def _get_florence2():
+    """Lazily load (and cache) the Florence-2 model + processor."""
+    if "model" in _florence_cache:
+        return _florence_cache["processor"], _florence_cache["model"]
+    _ensure_hf_direct()  # bypass local MITM proxy for the model download
+    import torch  # type: ignore
+    from transformers import AutoModelForCausalLM, AutoProcessor  # type: ignore
+
+    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    # Florence-2 ships custom modeling code -> trust_remote_code. Use fp32 on
+    # mps/cpu (fp16 is unstable outside CUDA). Force eager attention: the model's
+    # remote code predates newer transformers' sdpa dispatch and otherwise trips
+    # on a missing `_supports_sdpa` attribute (transformers>=4.5x).
+    model = AutoModelForCausalLM.from_pretrained(
+        FLORENCE2_MODEL,
+        trust_remote_code=True,
+        torch_dtype=torch.float32,
+        attn_implementation="eager",
+    ).to(device)
+    model.eval()
+    processor = AutoProcessor.from_pretrained(FLORENCE2_MODEL, trust_remote_code=True)
+    _florence_cache.update({"processor": processor, "model": model, "device": device})
+    return processor, model
+
+
+def _florence2_caption_image(processor, model, image_path: Path) -> str:
+    """Generate a detailed natural-language caption for one image with Florence-2."""
+    import torch  # type: ignore
+    from PIL import Image
+
+    device = _florence_cache.get("device", "cpu")
+    with Image.open(image_path) as im:
+        im = im.convert("RGB")
+        inputs = processor(text=FLORENCE2_TASK, images=im, return_tensors="pt").to(device)
+        with torch.no_grad():
+            generated = model.generate(
+                input_ids=inputs["input_ids"],
+                pixel_values=inputs["pixel_values"],
+                max_new_tokens=256,
+                num_beams=3,
+                do_sample=False,
+                # Florence-2's remote code indexes the legacy past_key_values tuple
+                # shape, which breaks against transformers>=4.5x's Cache class.
+                # Disabling the KV cache sidesteps that path (slower but correct).
+                use_cache=False,
+            )
+        text = processor.batch_decode(generated, skip_special_tokens=False)[0]
+        parsed = processor.post_process_generation(
+            text, task=FLORENCE2_TASK, image_size=(im.width, im.height)
+        )
+    # post_process_generation returns {task: caption}; fall back to raw text.
+    caption = parsed.get(FLORENCE2_TASK) if isinstance(parsed, dict) else None
+    return str(caption or text).strip()
+
+
+def _run_florence2(images, do_inject, trigger) -> tuple[str, int, str]:
+    processor, model = _get_florence2()
+    count = 0
+    for p in images:
+        caption = _florence2_caption_image(processor, model, p)
+        if do_inject:
+            caption = inject_trigger(caption, trigger)
+        p.with_suffix(".txt").write_text(caption, encoding="utf-8")
+        count += 1
+    return "florence2", count, f"Florence-2 自然语言描述完成（写实风格），共 {count} 张"
 
 
 def _manual_fallback(images, do_inject, trigger, detail_prefix) -> tuple[str, int, str]:
@@ -282,17 +395,21 @@ def auto_caption(
     method: str = "auto",
     exclude_body_face: bool = False,
     exclude_tags: list[str] | None = None,
+    wd14_model: str = "",
 ) -> tuple[str, int, str]:
     """Caption a dataset.
 
     method:
       - "auto": choose strategy by the base model's style (default)
       - "wd14": force WD14 booru tags (works for anime AND realistic)
+      - "florence2": force Florence-2 natural-language captions (realistic)
       - "blip": force BLIP natural-language captions
 
     exclude_body_face: drop built-in body/face tags so those identity traits
       bake into the trigger word (recommended for character LoRA). WD14 only.
     exclude_tags: extra user-supplied keywords to drop (WD14 only).
+    wd14_model: which WD14 tagger to use ("swinv2-v3" default | "eva02-large-v3"
+      | a raw HF repo id). WD14 only.
 
     Returns (method, captioned_count, detail).
     """
@@ -314,10 +431,27 @@ def auto_caption(
         excludes.extend(exclude_tags)
 
     # Resolve the effective captioner: explicit method wins, else by style.
-    chosen = method if method in ("wd14", "blip") else None
+    # For realistic auto, prefer Florence-2 when available (richer than BLIP).
+    chosen = method if method in ("wd14", "blip", "florence2") else None
     if chosen is None:
         style = base_model_service.style_of(base_model)
-        chosen = "blip" if style == "realistic" else "wd14"
+        if style == "realistic":
+            chosen = "florence2" if florence2_available() else "blip"
+        else:
+            chosen = "wd14"
+
+    if chosen == "florence2":
+        if florence2_available():
+            try:
+                return _run_florence2(images, do_inject, trigger)
+            except Exception as e:  # noqa: BLE001
+                return _manual_fallback(
+                    images, do_inject, trigger, f"Florence-2 运行失败({e})，降级为手动"
+                )
+        return _manual_fallback(
+            images, do_inject, trigger,
+            "未安装 Florence-2 依赖（transformers/torch/einops/timm），降级为手动",
+        )
 
     if chosen == "blip":
         if blip_available():
@@ -334,7 +468,10 @@ def auto_caption(
     # chosen == "wd14"
     if wd14_available():
         try:
-            return _run_wd14(images, threshold, do_inject, trigger, excludes=excludes)
+            return _run_wd14(
+                images, threshold, do_inject, trigger,
+                excludes=excludes, wd14_model=wd14_model,
+            )
         except Exception as e:  # noqa: BLE001
             return _manual_fallback(
                 images, do_inject, trigger, f"WD14 运行失败({e})，降级为手动"

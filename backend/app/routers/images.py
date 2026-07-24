@@ -25,6 +25,7 @@ from ..schemas import (
     ImagePreviewResult,
     ImagePullRequest,
     ImagePullSelectedRequest,
+    ImageSelectRequest,
     ImageSettingsRead,
     ImageSettingsUpdate,
     ImageTaskRead,
@@ -37,7 +38,10 @@ from ..services import image_manager
 router = APIRouter(prefix="/api/images", tags=["images"])
 
 # Category subdirs the filter script produces inside a target directory.
-_FILTER_CATEGORIES = ("single", "single_lowq", "multi", "poster", "collage", "animal")
+# "single_best" is produced by the LoRA select step (top-N of qualified singles).
+_FILTER_CATEGORIES = (
+    "single", "single_best", "single_lowq", "multi", "poster", "collage", "animal",
+)
 
 
 def _to_read(task: ImageTask) -> ImageTaskRead:
@@ -381,6 +385,21 @@ def xhs_pull_selected(body: XhsPullSelectedRequest):
             user=body.user.strip(),
             out_dir_name=body.out_dir_name,
             workers=body.workers,
+        )
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return get_task(task_id)
+
+
+@router.post("/select", response_model=ImageTaskRead)
+def select_lora_best(body: ImageSelectRequest):
+    """从某目录的 single/ 里精选最适合 LoRA 训练的 Top-N，拷到 single_best/。"""
+    try:
+        task_id = image_manager.start_select(
+            directory=body.directory,
+            count=body.count,
+            quality_weight=body.quality_weight,
+            no_diversity=body.no_diversity,
         )
     except ValueError as e:
         raise HTTPException(409, str(e))

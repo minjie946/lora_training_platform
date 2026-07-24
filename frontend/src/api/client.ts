@@ -255,6 +255,44 @@ export interface ImageBrowseResult {
   dirs: string[]
 }
 
+// ---- Prompt library (提示词库) ----
+export interface Prompt {
+  id: number
+  category: string
+  zh: string
+  en: string
+  mutex_group: string
+  aliases: string
+  created_at: string
+}
+
+export interface TranslatedPrompt {
+  zh: string
+  en: string
+  source: string // "dictionary" | "api" | "none"
+}
+
+export interface PromptSearchResult {
+  query: string
+  matches: Prompt[]
+  translated: TranslatedPrompt | null
+}
+
+export interface MutexConflict {
+  group: string
+  a_zh: string
+  a_en: string
+  b_zh: string
+  b_en: string
+}
+
+export interface CombineResult {
+  zh: string
+  en: string
+  conflicts: MutexConflict[]
+  items: Prompt[]
+}
+
 async function http<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -348,7 +386,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ filename, caption }),
     }),
-  autoCaption: (id: number, opts?: { threshold?: number; inject_trigger?: boolean; method?: string; exclude_body_face?: boolean; exclude_tags?: string[] }) =>
+  autoCaption: (id: number, opts?: { threshold?: number; inject_trigger?: boolean; method?: string; exclude_body_face?: boolean; exclude_tags?: string[]; wd14_model?: string }) =>
     http<{ ok: boolean; caption_status: string; detail: string }>(
       `/api/datasets/${id}/auto-caption`,
       {
@@ -359,6 +397,7 @@ export const api = {
           method: opts?.method ?? 'auto',
           exclude_body_face: opts?.exclude_body_face ?? false,
           exclude_tags: opts?.exclude_tags ?? [],
+          wd14_model: opts?.wd14_model ?? 'swinv2-v3',
         }),
       },
     ),
@@ -477,7 +516,7 @@ export const api = {
     http<ImageTask>('/api/images/xhs/pull-selected', { method: 'POST', body: JSON.stringify(opts) }),
   imageProxyUrl: (url: string) => `/api/images/proxy?url=${encodeURIComponent(url)}`,
   imageDirs: () => http<ImageDirEntry[]>('/api/images/dirs'),
-  imageTasks: (kind?: 'pull' | 'filter') =>
+  imageTasks: (kind?: 'pull' | 'filter' | 'select') =>
     http<ImageTask[]>(`/api/images/tasks${kind ? `?kind=${kind}` : ''}`),
   imageTask: (id: number) => http<ImageTask>(`/api/images/tasks/${id}`),
   imageTaskLog: (id: number, tail = 400) =>
@@ -494,4 +533,23 @@ export const api = {
     http<ImageTask>('/api/images/pull', { method: 'POST', body: JSON.stringify(opts) }),
   filterImages: (opts: ImageFilterOpts) =>
     http<ImageTask>('/api/images/filter', { method: 'POST', body: JSON.stringify(opts) }),
+  selectLoraBest: (opts: { directory: string; count?: number; quality_weight?: number; no_diversity?: boolean }) =>
+    http<ImageTask>('/api/images/select', { method: 'POST', body: JSON.stringify(opts) }),
+
+  // prompt library (提示词库)
+  listPrompts: (category?: string) =>
+    http<Prompt[]>(`/api/prompts${category ? `?category=${encodeURIComponent(category)}` : ''}`),
+  promptCategories: () => http<string[]>('/api/prompts/categories'),
+  createPrompt: (body: Partial<Prompt>) =>
+    http<Prompt>('/api/prompts', { method: 'POST', body: JSON.stringify(body) }),
+  updatePrompt: (id: number, body: Partial<Prompt>) =>
+    http<Prompt>(`/api/prompts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deletePrompt: (id: number) =>
+    http<{ ok: boolean }>(`/api/prompts/${id}`, { method: 'DELETE' }),
+  searchPrompt: (query: string) =>
+    http<PromptSearchResult>('/api/prompts/search', { method: 'POST', body: JSON.stringify({ query }) }),
+  checkMutex: (ids: number[]) =>
+    http<MutexConflict[]>('/api/prompts/check', { method: 'POST', body: JSON.stringify({ ids }) }),
+  combinePrompts: (ids: number[], separator = ', ') =>
+    http<CombineResult>('/api/prompts/combine', { method: 'POST', body: JSON.stringify({ ids, separator }) }),
 }

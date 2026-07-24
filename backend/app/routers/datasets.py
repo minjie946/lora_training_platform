@@ -292,6 +292,7 @@ def auto_caption(
             method=body.method,
             exclude_body_face=body.exclude_body_face,
             exclude_tags=body.exclude_tags,
+            wd14_model=body.wd14_model,
         )
     except ValueError as e:
         raise HTTPException(409, str(e))

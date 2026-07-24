@@ -46,6 +46,7 @@ SETTINGS_FILE = IMAGE_TOOLS_WORKSPACE / "settings.json"
 _PULL_SCRIPT = "weibo_album_downloader.py"
 _XHS_SCRIPT = "xhs_user_downloader.py"
 _FILTER_SCRIPT = "filter_single_person.py"
+_SELECT_SCRIPT = "select_lora_best.py"
 
 # Track supervisor threads / processes in-process so we can stop them and avoid
 # launching two runs of the same kind at once (single machine, be gentle).
@@ -728,6 +729,77 @@ def start_filter(
         "YOLO_WEIGHTS": str(IMAGE_TOOLS_YOLO_WEIGHTS),
     }
     return _launch("filter", directory, directory, params, cmd, extra_env=extra_env)
+
+
+def start_select(
+    *,
+    directory: str,
+    count: int = 50,
+    quality_weight: float = 0.6,
+    no_diversity: bool = False,
+) -> int:
+    """从某目录里精选最适合 LoRA 训练的 Top-N 拷到 single_best/。
+
+    ``directory`` 可以是：
+      * 绝对路径（用户在文件系统里任选的目录），或
+      * 相对输出根的目录名（如 "uid_123"，来自筛选产出）。
+    输入图片来源的判定：若目录下存在 single/ 子目录则用它（承接单人筛选产出），
+    否则直接用该目录本身的图片。输出统一为「输入所在基目录」下的 single_best/。
+    """
+    if is_kind_running("select"):
+        raise ValueError("已有精选任务在进行中，请等待完成")
+    if count < 1:
+        raise ValueError("精选数量至少为 1")
+
+    raw = (directory or "").strip()
+    if not raw:
+        raise ValueError("请选择要检测的目录")
+
+    p = Path(raw).expanduser()
+    if p.is_absolute():
+        # 任意系统目录（本机单用户工具，与 browse/pick-dir 的能力一致）。
+        base_dir = p.resolve()
+    else:
+        out_root = get_out_dir().resolve()
+        base_dir = (out_root / raw.strip("/")).resolve()
+        # 相对形式仍做路径穿越防护。
+        if not (str(base_dir) == str(out_root) or str(base_dir).startswith(str(out_root) + os.sep)):
+            raise ValueError("非法的目录路径")
+    if not base_dir.is_dir():
+        raise ValueError(f"目录不存在：{raw}")
+
+    # 判定输入目录与输出目录（single_best 始终放在基目录下）。
+    if base_dir.name == "single":
+        input_dir = base_dir
+        best_dir = base_dir.parent / "single_best"
+    elif (base_dir / "single").is_dir():
+        input_dir = base_dir / "single"
+        best_dir = base_dir / "single_best"
+    else:
+        input_dir = base_dir
+        best_dir = base_dir / "single_best"
+
+    params = {
+        "directory": raw,
+        "count": count,
+        "quality_weight": quality_weight,
+        "no_diversity": no_diversity,
+    }
+    cmd = [
+        UV_BIN, "run", "--script", _SELECT_SCRIPT,
+        str(input_dir),
+        "--out", str(best_dir),
+        "--count", str(count),
+        "--quality-weight", str(quality_weight),
+    ]
+    if no_diversity:
+        cmd += ["--no-diversity"]
+
+    # Reuse the same persistent InsightFace cache as the filter (recognition
+    # weights are part of the buffalo_l bundle already cached there).
+    IMAGE_TOOLS_INSIGHTFACE_ROOT.mkdir(parents=True, exist_ok=True)
+    extra_env = {"INSIGHTFACE_ROOT": str(IMAGE_TOOLS_INSIGHTFACE_ROOT)}
+    return _launch("select", raw, str(best_dir), params, cmd, extra_env=extra_env)
 
 
 def stop_task(task_id: int) -> bool:

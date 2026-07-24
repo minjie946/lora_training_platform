@@ -218,6 +218,15 @@ else
   (cd "$ROOT_DIR/backend" && uv pip install wdtagger timm)
 fi
 
+echo "==> 检查 Florence-2 打标依赖 (einops)"
+# Florence-2（写实自然语言打标）以 trust_remote_code 加载，运行期需要 einops（timm 已随 WD14 安装）。
+if (cd "$ROOT_DIR/backend" && uv run python -c "import einops" >/dev/null 2>&1); then
+  echo "[ok] Florence-2 依赖 (einops) 已安装"
+else
+  echo "==> 未检测到 einops，正在安装（供 Florence-2 使用）"
+  (cd "$ROOT_DIR/backend" && uv pip install einops)
+fi
+
 echo "==> 启动后端 (http://127.0.0.1:${BACKEND_PORT})"
 (cd "$ROOT_DIR/backend" && ENGINES_DIR="${ENGINES_DIR}" KOHYA_DIR="${KOHYA_DIR}" RVC_DIR="${RVC_DIR}" RVC_PYTHON="${RVC_PYTHON}" uv run uvicorn app.main:app --reload --port "${BACKEND_PORT}") &
 BACKEND_PID=$!

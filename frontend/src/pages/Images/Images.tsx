@@ -2,24 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Download, Filter, Loader2, StopCircle, FolderOpen, RefreshCw, Users, AlertTriangle,
   KeyRound, CheckCircle2, Pencil, Save, X, Eye, Circle, Settings as SettingsIcon, RotateCcw,
-  Folder, CornerLeftUp, Check,
+  Folder, CornerLeftUp, Check, Sparkles,
 } from 'lucide-react'
 import { api, ImageDirEntry, ImageTask, ImageCookie, ImagePreviewResult, ImageSettings, ImageBrowseResult } from '../../api/client'
 import Select from '../../components/Select/Select'
 import PageHeader from '../../components/PageHeader/PageHeader'
 import './Images.css'
 
-type Tab = 'pull' | 'filter' | 'settings'
+type Tab = 'pull' | 'filter' | 'select' | 'settings'
 
 export default function Images() {
   const [tab, setTab] = useState<Tab>('pull')
 
   return (
     <div className="page">
-      <PageHeader title="图片管理" subtitle="微博图片拉取 · 单人筛选 · LoRA 质量检测" />
+      <PageHeader title="图片管理" subtitle="微博图片拉取 · 单人筛选 · LoRA 精选" />
       <div className="page-body">
 
-        {/* Tab 切换：图片拉取 / 图片筛选 / 设置 */}
+        {/* Tab 切换：图片拉取 / 图片筛选 / LoRA 精选 / 设置 */}
         <div className="tabs">
           <button className={`tab${tab === 'pull' ? ' active' : ''}`} onClick={() => setTab('pull')}>
             <Download size={16} />图片拉取
@@ -27,19 +27,25 @@ export default function Images() {
           <button className={`tab${tab === 'filter' ? ' active' : ''}`} onClick={() => setTab('filter')}>
             <Filter size={16} />图片筛选
           </button>
+          <button className={`tab${tab === 'select' ? ' active' : ''}`} onClick={() => setTab('select')}>
+            <Sparkles size={16} />LoRA 精选
+          </button>
           <button className={`tab${tab === 'settings' ? ' active' : ''}`} onClick={() => setTab('settings')}>
             <SettingsIcon size={16} />设置
           </button>
         </div>
 
-        {tab === 'pull' ? <PullPanel /> : tab === 'filter' ? <FilterPanel /> : <SettingsPanel />}
+        {tab === 'pull' ? <PullPanel />
+          : tab === 'filter' ? <FilterPanel />
+            : tab === 'select' ? <SelectPanel />
+              : <SettingsPanel />}
       </div>
     </div>
   )
 }
 
 // ---- 任务日志与进度轮询（拉取/筛选共用） ----
-function useTaskRunner(kind: 'pull' | 'filter') {
+function useTaskRunner(kind: 'pull' | 'filter' | 'select') {
   const [task, setTask] = useState<ImageTask | null>(null)
   const [log, setLog] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -673,8 +679,120 @@ function FilterPanel() {
 
 function catLabel(k: string): string {
   return ({
-    single: '单人·可训练', single_lowq: '单人·质量不足', multi: '多人', poster: '海报/文字', collage: '拼图', animal: '动物',
+    single: '单人·可训练', single_best: '单人·精选', single_lowq: '单人·质量不足', multi: '多人', poster: '海报/文字', collage: '拼图', animal: '动物',
   } as Record<string, string>)[k] || k
+}
+
+// --------------------------------------------------------------------------- //
+// Tab 3：LoRA 精选（可选任意系统目录，从中挑最适合训练的 Top-N 拷到 single_best/）
+// --------------------------------------------------------------------------- //
+function SelectPanel() {
+  const [directory, setDirectory] = useState('')
+  const [count, setCount] = useState(50)
+  const [qualityWeight, setQualityWeight] = useState(0.6)
+  const [noDiversity, setNoDiversity] = useState(false)
+  const [err, setErr] = useState('')
+  const [picking, setPicking] = useState(false)   // 内置目录浏览弹窗（原生不可用时回退）
+  const [nativeBusy, setNativeBusy] = useState(false)
+  const { task, log, logRef, begin } = useTaskRunner('select')
+
+  const running = task?.status === 'running'
+
+  // 优先调起系统原生文件夹选择框；不可用时回退到内置目录浏览弹窗。
+  const chooseNative = async () => {
+    setNativeBusy(true); setErr('')
+    try {
+      const r = await api.pickImageDir(directory || '')
+      if (r.path) setDirectory(r.path)
+    } catch {
+      setPicking(true)
+    } finally { setNativeBusy(false) }
+  }
+
+  const run = async () => {
+    setErr('')
+    if (!directory.trim()) { setErr('请选择要检测的目录'); return }
+    if (count < 1) { setErr('精选数量至少为 1'); return }
+    try {
+      const t = await api.selectLoraBest({
+        directory: directory.trim(),
+        count,
+        quality_weight: qualityWeight,
+        no_diversity: noDiversity,
+      })
+      begin(t)
+    } catch (e: any) { setErr(e.message) }
+  }
+  const stop = async () => { if (task) { try { await api.stopImageTask(task.id) } catch { } } }
+
+  return (
+    <div className="card">
+      <label className="imgfield wide">
+        <span className="imgfield-label"><FolderOpen size={13} /> 待检测目录</span>
+        <div className="dir-row">
+          <input
+            className="input"
+            style={{ flex: 1 }}
+            value={directory}
+            onChange={(e) => setDirectory(e.target.value)}
+            placeholder="点右侧「选择文件夹」调起系统选择，或直接输入绝对路径"
+            disabled={running}
+          />
+          <button className="btn ghost sm" onClick={chooseNative} disabled={running || nativeBusy}>
+            {nativeBusy ? <><span className="spinner" />选择中…</> : <><FolderOpen size={14} />选择文件夹</>}
+          </button>
+        </div>
+      </label>
+
+      <div className="form-grid">
+        <label className="imgfield sm">
+          <span className="imgfield-label">精选数量</span>
+          <input className="input" type="number" min={1} step={1} value={count}
+            onChange={(e) => setCount(Number(e.target.value))} disabled={running} />
+        </label>
+        <label className="imgfield sm">
+          <span className="imgfield-label">质量权重 {qualityWeight.toFixed(2)}</span>
+          <input type="range" min={0} max={1} step={0.05} value={qualityWeight}
+            onChange={(e) => setQualityWeight(Number(e.target.value))} disabled={running} />
+        </label>
+      </div>
+
+      <div className="check-row">
+        <label className="check"><input type="checkbox" checked={noDiversity}
+          onChange={(e) => setNoDiversity(e.target.checked)} disabled={running} />关闭多样性去重（纯按质量分取 Top-N）</label>
+      </div>
+
+      <div className="toolbar" style={{ marginTop: 4 }}>
+        {running ? (
+          <button className="btn danger" onClick={stop}><StopCircle size={16} />停止精选</button>
+        ) : (
+          <button className="btn" onClick={run} disabled={!directory.trim()}><Sparkles size={16} />开始精选</button>
+        )}
+        <span className="spacer" />
+        {err && <span className="err-text">{err}</span>}
+      </div>
+
+      <p className="muted hint">
+        选择任意目录进行检测：若目录下存在 single/（单人筛选产出）则以它为输入，否则直接检测该目录内的图片。
+        按清晰度 / 正脸 / 人脸大小 / 分辨率 / 曝光 / 置信度加权打分，再用人脸 embedding 做最远点采样去重，
+        挑出最适合训练的 Top-N 拷贝到同级 single_best/（不改动原图）。质量权重越高越偏高质量、越低越偏多样覆盖；重跑会覆盖上次精选结果。
+        首次运行会自动下载模型（约 300MB），请耐心等待。
+      </p>
+
+      <TaskStatus task={task} />
+      {(log || running) && (
+        <pre className="log-box" ref={logRef}>{log || '等待输出…'}</pre>
+      )}
+
+      {picking && (
+        <DirPicker
+          initial={directory || ''}
+          onCancel={() => setPicking(false)}
+          onPick={(p) => { setDirectory(p); setPicking(false) }}
+        />
+      )}
+    </div>
+  )
 }
 
 // --------------------------------------------------------------------------- //

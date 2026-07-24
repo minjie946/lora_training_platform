@@ -35,6 +35,7 @@ def start_auto_caption(
     method: str,
     exclude_body_face: bool,
     exclude_tags: list[str],
+    wd14_model: str = "swinv2-v3",
 ) -> None:
     """Kick off captioning in the background. Raises if already running."""
     with _lock:
@@ -55,6 +56,7 @@ def start_auto_caption(
             method=method,
             exclude_body_face=exclude_body_face,
             exclude_tags=exclude_tags,
+            wd14_model=wd14_model,
         ),
         daemon=True,
     )
@@ -71,6 +73,7 @@ def _run(
     method: str,
     exclude_body_face: bool,
     exclude_tags: list[str],
+    wd14_model: str = "swinv2-v3",
 ) -> None:
     try:
         _, count, detail = cap.auto_caption(
@@ -82,6 +85,7 @@ def _run(
             method=method,
             exclude_body_face=exclude_body_face,
             exclude_tags=exclude_tags,
+            wd14_model=wd14_model,
         )
         _set_status(dataset_id, "done", detail, mark_captioned=count > 0)
     except Exception as e:  # noqa: BLE001

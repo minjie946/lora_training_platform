@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import {
   LayoutGrid, Database, ListTodo, Library, Mic, Server, Images as ImagesIcon,
-  Box, ChevronLeft, ChevronRight,
+  Box, ChevronLeft, ChevronRight, BookText,
 } from 'lucide-react'
 import Dashboard from './pages/Dashboard/Dashboard'
 import Datasets from './pages/Datasets/Datasets'
@@ -14,12 +14,14 @@ import Models from './pages/Models/Models'
 import Remotes from './pages/Remotes/Remotes'
 import Voice from './pages/Voice/Voice'
 import Images from './pages/Images/Images'
+import PromptLibrary from './pages/PromptLibrary/PromptLibrary'
 import './App.css'
 
 const navItems = [
   { to: '/', end: true, icon: LayoutGrid, label: '概览' },
   { to: '/images', icon: ImagesIcon, label: '图片管理' },
   { to: '/datasets', icon: Database, label: '数据集' },
+  { to: '/prompts', icon: BookText, label: '提示词库' },
   { to: '/jobs', icon: ListTodo, label: '训练任务' },
   { to: '/models', icon: Library, label: '模型库' },
   { section: '声音克隆' },
@@ -81,6 +83,7 @@ export default function App() {
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/models" element={<Models />} />
           <Route path="/images" element={<Images />} />
+          <Route path="/prompts" element={<PromptLibrary />} />
           <Route path="/voice" element={<Voice />} />
           <Route path="/remotes" element={<Remotes />} />
         </Routes>

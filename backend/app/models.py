@@ -74,6 +74,26 @@ class ImageTask(SQLModel, table=True):
     finished_at: Optional[datetime] = None
 
 
+class Prompt(SQLModel, table=True):
+    """A single library prompt term with paired Chinese / English text.
+
+    Prompts are grouped by `category` (发型 / 服装 / 视角 …) for browsing, and by
+    `mutex_group` for conflict detection: two prompts sharing the same non-empty
+    `mutex_group` are mutually exclusive (e.g. two hair colors), so the combine /
+    check flow can flag them.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    category: str = "其他"
+    zh: str = ""  # 中文名
+    en: str = ""  # 英文提示词
+    # 互斥组：同组内的提示词互斥（如 "hair_color"）。空字符串表示不参与互斥。
+    mutex_group: str = ""
+    # 中文别名，逗号分隔，用于查找命中（如 "金色头发,金色发丝"）。
+    aliases: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class RemoteHost(SQLModel, table=True):
     """A cloud / remote CUDA host reachable over SSH for off-box training."""
 

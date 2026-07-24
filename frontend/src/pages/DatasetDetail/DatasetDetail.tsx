@@ -21,7 +21,8 @@ export default function DatasetDetail() {
   const [checkingQuality, setCheckingQuality] = useState(false)
   const [editing, setEditing] = useState<ImageItem | null>(null)
   const [preview, setPreview] = useState<ImageItem | null>(null)
-  const [capMethod, setCapMethod] = useState('wd14') // auto | wd14 | blip，默认 WD14（写实/动漫均可，带置信度）
+  const [capMethod, setCapMethod] = useState('wd14') // auto | wd14 | florence2 | blip，默认 WD14（写实/动漫均可，带置信度）
+  const [wd14Model, setWd14Model] = useState('swinv2-v3') // swinv2-v3（快）| eva02-large-v3（更准更慢）
   const [threshold, setThreshold] = useState(0.35)
   const [excludeBodyFace, setExcludeBodyFace] = useState(false)
   const [excludeTags, setExcludeTags] = useState('')
@@ -123,6 +124,7 @@ export default function DatasetDetail() {
         threshold,
         exclude_body_face: excludeBodyFace,
         exclude_tags: excludeTags.split(',').map((s) => s.trim()).filter(Boolean),
+        wd14_model: wd14Model,
       })
       startPolling()
     } catch (e: any) { setCaptioning(false); setMsg(e.message) }
@@ -198,12 +200,15 @@ export default function DatasetDetail() {
     ? `${baseInfo.label}（${baseInfo.is_sdxl ? 'SDXL' : 'SD1.5'} · ${baseInfo.style === 'realistic' ? '写实' : '动漫'}）`
     : (ds.base_model || '默认底模')
   const isRealistic = baseInfo?.style === 'realistic'
-  const autoCaptioner = isRealistic ? 'BLIP（自然语言描述）' : 'WD14（booru 标签）'
+  const autoCaptioner = isRealistic ? 'Florence-2（自然语言描述）' : 'WD14（booru 标签）'
   const effectiveMethod =
     capMethod === 'wd14' ? 'WD14（booru 标签）'
-      : capMethod === 'blip' ? 'BLIP（自然语言描述）'
-        : `自动（跟随底模：${autoCaptioner}）`
+      : capMethod === 'florence2' ? 'Florence-2（自然语言描述）'
+        : capMethod === 'blip' ? 'BLIP（自然语言描述）'
+          : `自动（跟随底模：${autoCaptioner}）`
   const showThreshold = capMethod === 'wd14' || (capMethod === 'auto' && !isRealistic)
+  // WD14 模型选择器仅在实际会走 WD14 时显示。
+  const showWd14Model = showThreshold
 
   // 依据 WD14 置信度与质量检测结果过滤图片。
   const hasConfData = images.some((im) => imageConfidenceLevel(im) !== null)
@@ -302,12 +307,32 @@ export default function DatasetDetail() {
                 value={capMethod}
                 onChange={(v) => setCapMethod(String(v))}
                 options={[
-                  { value: 'auto', label: `自动（跟随底模：${autoCaptioner}）` },
-                  { value: 'wd14', label: 'WD14 标签（写实/动漫均可，适合标身材等属性）' },
-                  { value: 'blip', label: 'BLIP 自然语言描述' },
+                  { value: 'auto', label: '自动', desc: `跟随底模：${autoCaptioner}` },
+                  { value: 'wd14', label: 'WD14 标签', desc: '写实/动漫均可，适合标身材等属性' },
+                  { value: 'florence2', label: 'Florence-2', desc: '自然语言描述，写实推荐' },
+                  { value: 'blip', label: 'BLIP', desc: '自然语言描述' },
                 ]}
               />
             </div>
+            {showWd14Model && (
+              <div className="cap-field cap-field-model">
+                <label className="cap-label">
+                  WD14 模型
+                  <span className="cap-help tip" tabIndex={0}
+                    data-tip={'选择 WD14 tagger 模型：\n\n· SwinV2 v3 → 默认，速度快、精度好，日常够用\n· EVA02-large v3 → 精度最高，但模型大、在本机为 CPU 推理，明显更慢\n\n首次切换需下载对应模型权重。'}>
+                    <HelpCircle size={13} />
+                  </span>
+                </label>
+                <Select
+                  value={wd14Model}
+                  onChange={(v) => setWd14Model(String(v))}
+                  options={[
+                    { value: 'swinv2-v3', label: 'SwinV2 v3', desc: '快，默认' },
+                    { value: 'eva02-large-v3', label: 'EVA02-large v3', desc: '更准，更慢' },
+                  ]}
+                />
+              </div>
+            )}
             {showThreshold && (
               <div className="cap-field cap-field-strength">
                 <div className="cap-label-row">

@@ -388,6 +388,21 @@
   vertical-align: middle;
 }
 
+/* ---- LoRA 精选子区（在筛选卡内，与筛选流程分隔） ---- */
+.select-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--border);
+}
+
+.select-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
 /* ---- 目录选择器弹窗 ---- */
 .dp-overlay {
   position: fixed;

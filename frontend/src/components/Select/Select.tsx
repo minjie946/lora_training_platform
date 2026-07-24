@@ -4,6 +4,8 @@ import './Select.css'
 export interface SelectOption {
     value: string | number
     label: string
+    // 可选说明：展开的下拉面板里显示在 label 下方第二行；选中态（trigger）只展示 label。
+    desc?: string
 }
 
 interface Props {
@@ -70,7 +72,8 @@ export default function Select({ value, options, onChange, placeholder = '请选
                             className={`select-option ${o.value === value ? 'active' : ''}`}
                             onClick={() => pick(o.value)}
                         >
-                            {o.label}
+                            <span className="select-option-label">{o.label}</span>
+                            {o.desc && <span className="select-option-desc">{o.desc}</span>}
                         </div>
                     ))}
                 </div>

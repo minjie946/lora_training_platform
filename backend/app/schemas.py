@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 # ---- System ----
@@ -100,12 +100,14 @@ class CaptionUpdate(BaseModel):
 class AutoCaptionRequest(BaseModel):
     threshold: float = 0.35
     inject_trigger: bool = True
-    # "auto" = choose by base model style; or force "wd14" / "blip"
+    # "auto" = choose by base model style; or force "wd14" / "blip" / "florence2"
     method: str = "auto"
     # Character LoRA: drop body/face tags so those traits bake into the trigger.
     exclude_body_face: bool = False
     # Extra keywords to drop from WD14 tags (case-insensitive substring match).
     exclude_tags: list[str] = []
+    # WD14 tagger model: "swinv2-v3" (default) | "eva02-large-v3" | raw HF repo id.
+    wd14_model: str = "swinv2-v3"
 
 
 class AutoCaptionResult(BaseModel):
@@ -164,6 +166,89 @@ class LoraModelRead(BaseModel):
     base_model: str
     file_size: int
     created_at: datetime
+
+
+# ---- Prompt library (提示词库) ----
+class PromptCreate(BaseModel):
+    category: str = "其他"
+    zh: str
+    en: str
+    mutex_group: str = ""
+    aliases: str = ""
+
+
+class PromptUpdate(BaseModel):
+    category: Optional[str] = None
+    zh: Optional[str] = None
+    en: Optional[str] = None
+    mutex_group: Optional[str] = None
+    aliases: Optional[str] = None
+
+
+class PromptRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category: str
+    zh: str
+    en: str
+    mutex_group: str
+    aliases: str
+    created_at: datetime
+
+
+class PromptSearchRequest(BaseModel):
+    """查找一个中文词：命中词库则返回匹配项，未命中则走翻译兜底。"""
+
+    query: str
+
+
+class TranslatedPrompt(BaseModel):
+    """翻译兜底产出的候选提示词（未收录进词库）。"""
+
+    zh: str
+    en: str
+    source: str  # "dictionary" | "api" | "none"
+
+
+class PromptSearchResult(BaseModel):
+    query: str
+    # 词库命中项（可能多个，如别名重叠）。
+    matches: list[PromptRead] = []
+    # 未命中时的翻译兜底结果（命中时为 None）。
+    translated: Optional[TranslatedPrompt] = None
+
+
+class MutexConflict(BaseModel):
+    """一对互斥提示词。"""
+
+    group: str
+    a_zh: str
+    a_en: str
+    b_zh: str
+    b_en: str
+
+
+class MutexCheckRequest(BaseModel):
+    """检查一组选中提示词是否存在互斥。传入 prompt id 列表。"""
+
+    ids: list[int] = []
+    # 也允许直接传英文提示词（组合场景下可能包含未入库的翻译结果）。
+    extra_en: list[str] = []
+
+
+class CombineRequest(BaseModel):
+    """组合场景：选择若干提示词，产出中英文拼接串并检查互斥。"""
+
+    ids: list[int]
+    separator: str = ", "
+
+
+class CombineResult(BaseModel):
+    zh: str  # 中文组合串
+    en: str  # 英文组合串
+    conflicts: list[MutexConflict] = []
+    items: list[PromptRead] = []
 
 
 # ---- Remote hosts (cloud GPU) ----
@@ -312,9 +397,18 @@ class ImageFilterRequest(BaseModel):
     no_quality_filter: bool = False  # 关闭 LoRA 训练质量筛选(不细分 single_lowq/)
 
 
+class ImageSelectRequest(BaseModel):
+    """从某目录的 single/ 里精选最适合 LoRA 训练的 Top-N 拷到 single_best/。"""
+
+    directory: str  # e.g. "uid_123" 或 "uid_123/single"
+    count: int = 50  # 精选数量
+    quality_weight: float = 0.6  # 质量 vs 多样性权重(0~1，越高越偏质量)
+    no_diversity: bool = False  # 关闭多样性去重，纯按质量分取 Top-N
+
+
 class ImageTaskRead(BaseModel):
     id: int
-    kind: str  # "pull" | "filter"
+    kind: str  # "pull" | "filter" | "select"
     target: str
     out_dir: str
     params: dict[str, Any]

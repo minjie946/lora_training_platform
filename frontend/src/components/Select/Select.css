@@ -64,6 +64,9 @@
 }
 
 .select-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   padding: 9px 12px;
   border-radius: 8px;
   cursor: pointer;
@@ -77,4 +80,20 @@
 .select-option.active {
   background: var(--accent);
   color: #fff;
+}
+
+.select-option-label {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* 第二行说明：更小更暗；选中态下用半透明白以保持可读。 */
+.select-option-desc {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+
+.select-option.active .select-option-desc {
+  color: rgba(255, 255, 255, .8);
 }
